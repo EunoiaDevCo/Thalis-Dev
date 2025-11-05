@@ -1,0 +1,37 @@
+#include "Parser.h"
+#include "Program.h"
+#include "Class.h"
+#include "Memory/Memory.h"
+
+char* test()
+{
+	char* t = "Hello";
+	return t;
+}
+
+int main()
+{
+	char* meep = test();
+
+	Program program;
+	Parser parser(&program);
+	parser.Parse("Main.tls");
+
+	uint32 pc = program.GetCodeSize();
+	ID mainClassID = program.GetClassIDWithMainFunction();
+	std::vector<ASTExpression*> args;
+	program.AddStaticFunctionCallCommand(mainClassID, program.GetClass(mainClassID)->GetFunctionID("Main", args), false);
+	program.AddEndCommand();
+
+	program.ExecuteProgram(pc);
+
+	uint64 maxStackUsage = program.GetStackAllocator()->GetMaxUsage();
+	uint64 numHeapAllocs = program.GetHeapAllocator()->GetNumAllocs();
+	uint64 numHeapFrees = program.GetHeapAllocator()->GetNumFrees();
+
+	std::cout << "Max stack usage: " << Memory::BytesToKB(maxStackUsage) << "KB" << std::endl;
+	std::cout << "Num heap allocs: " << numHeapAllocs << std::endl;
+	std::cout << "Num heap frees: " << numHeapFrees << std::endl;
+
+	return 0;
+}

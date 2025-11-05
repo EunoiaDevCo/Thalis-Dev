@@ -1,0 +1,48 @@
+Import IO;
+
+class Vec2
+{
+	public void Print()
+	{
+		IO.Print("(");
+		IO.Print(x);
+		IO.Print(", ");
+		IO.Print(y);
+		IO.Println(")");
+	}
+
+	public void Set(real32 ax, real32 ay)
+	{
+		x = ax;
+		y = ay;
+	}
+
+	real32 x;
+	real32 y;
+};
+
+class Transform
+{
+	public void SetPos(real32 x, real32 y)
+	{
+		pos.x = x;
+		pos.y = y;
+	}
+
+	public Vec2 pos;
+	public Vec2 scale;
+	public real32 rot;
+};
+
+class Test
+{
+	public real32* ptr;
+};
+
+class Main
+{
+	public static void Main()
+	{
+		Vec2 array[10];
+	}
+};
