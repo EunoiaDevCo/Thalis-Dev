@@ -255,10 +255,10 @@ struct ASTExpressionMemberAccess : public ASTExpression
 	uint64 offset;
 	uint16 memberType;
 	uint8 memberPointerLevel;
-	uint32 arrayIndex;
+	ASTExpression* indexExpr;
 
-	ASTExpressionMemberAccess(ID scope, ID variableID, uint64 offset, uint16 memberType, uint8 memberPointerLevel, uint32 arrayIndex) :
-		ASTExpression(scope), variableID(variableID), offset(offset), memberType(memberType), memberPointerLevel(memberPointerLevel), arrayIndex(arrayIndex) { }
+	ASTExpressionMemberAccess(ID scope, ID variableID, uint64 offset, uint16 memberType, uint8 memberPointerLevel, ASTExpression* indexExpr = nullptr) :
+		ASTExpression(scope), variableID(variableID), offset(offset), memberType(memberType), memberPointerLevel(memberPointerLevel), indexExpr(indexExpr) { }
 
 	virtual void EmitCode(Program* program) override;
 	virtual TypeInfo GetTypeInfo(Program* program) override;
@@ -271,11 +271,11 @@ struct ASTExpressionMemberSet : public ASTExpression
 	uint16 memberType;
 	uint8 memberPointerLevel;
 	ASTExpression* assignExpr;
-	uint32 arrayIndex;
+	ASTExpression* indexExpr;
 
-	ASTExpressionMemberSet(ID scope, ID variableID, uint64 offset, uint16 memberType, uint8 memberPointerLevel, ASTExpression* assignExpr, uint32 arrayIndex) :
+	ASTExpressionMemberSet(ID scope, ID variableID, uint64 offset, uint16 memberType, uint8 memberPointerLevel, ASTExpression* assignExpr, ASTExpression* indexExpr = nullptr) :
 		ASTExpression(scope), variableID(variableID), offset(offset), memberType(memberType), memberPointerLevel(memberPointerLevel),
-		assignExpr(assignExpr), arrayIndex(arrayIndex) { }
+		assignExpr(assignExpr), indexExpr(indexExpr) { }
 
 	virtual void EmitCode(Program* program) override;
 	virtual TypeInfo GetTypeInfo(Program* program) override;
@@ -304,6 +304,80 @@ struct ASTExpressionDirectMemberAccess : public ASTExpression
 
 	ASTExpressionDirectMemberAccess(ID scope, const TypeInfo& memberTypeInfo, uint64 offset, ASTExpression* assignExpr = nullptr) :
 		ASTExpression(scope), memberTypeInfo(memberTypeInfo), offset(offset), assignExpr(assignExpr) { }
+
+	virtual void EmitCode(Program* program) override;
+	virtual TypeInfo GetTypeInfo(Program* program) override;
+};
+
+struct ASTExpressionThis : public ASTExpression
+{
+	uint16 thisType;
+
+	ASTExpressionThis(ID scope, uint16 thisType) :
+		ASTExpression(scope), thisType(thisType) { }
+
+	virtual void EmitCode(Program* program) override;
+	virtual TypeInfo GetTypeInfo(Program* program) override;
+};
+
+struct ASTExpressionIfElse : public ASTExpression
+{
+	ID ifScope;
+	ID elseScope;
+	ASTExpression* conditionExpr;
+	std::vector<ASTExpression*> ifExprs;
+	std::vector<ASTExpression*> elseExprs;
+
+	ASTExpressionIfElse(ID scope, ID ifScope, ID elseScope, ASTExpression* conditionExpr, const std::vector<ASTExpression*> ifExprs, const std::vector<ASTExpression*> elseExprs) :
+		ASTExpression(scope), ifScope(ifScope), elseScope(elseScope), conditionExpr(conditionExpr), ifExprs(ifExprs), elseExprs(elseExprs) { }
+
+	virtual void EmitCode(Program* program) override;
+	virtual TypeInfo GetTypeInfo(Program* program) override;
+};
+
+struct ASTExpressionFor : public ASTExpression
+{
+	ID forScope;
+	ASTExpression* declareExpr;
+	ASTExpression* conditionExpr;
+	ASTExpression* incrExpr;
+	std::vector<ASTExpression*> forExprs;
+
+	ASTExpressionFor(ID scope, ID forScope, ASTExpression* declareExpr, ASTExpression* conditionExpr, ASTExpression* incrExpr, const std::vector<ASTExpression*> forExprs) :
+		ASTExpression(scope), forScope(forScope), declareExpr(declareExpr), conditionExpr(conditionExpr), incrExpr(incrExpr), forExprs(forExprs) { }
+
+	virtual void EmitCode(Program* program) override;
+	virtual TypeInfo GetTypeInfo(Program* program) override;
+};
+
+enum class ASTUnaryUpdateOp
+{
+	PRE_INC,
+	PRE_DEC,
+	POST_INC,
+	POST_DEC
+};
+
+struct ASTExpressionUnaryUpdate : public ASTExpression
+{
+	ASTExpression* expr;
+	ASTUnaryUpdateOp op;
+
+	ASTExpressionUnaryUpdate(ID scope, ASTExpression* expr, ASTUnaryUpdateOp op) :
+		ASTExpression(scope), expr(expr), op(op) { }
+
+	virtual void EmitCode(Program* program) override;
+	virtual TypeInfo GetTypeInfo(Program* program) override;
+};
+
+struct ASTExpressionWhile : public ASTExpression
+{
+	ID whileScope;
+	ASTExpression* conditionExpr;
+	std::vector<ASTExpression*> whileExprs;
+
+	ASTExpressionWhile(ID scope, ID whileScope, ASTExpression* conditionExpr, const std::vector<ASTExpression*>& whileExprs) :
+		ASTExpression(scope), whileScope(whileScope), conditionExpr(conditionExpr), whileExprs(whileExprs) { }
 
 	virtual void EmitCode(Program* program) override;
 	virtual TypeInfo GetTypeInfo(Program* program) override;

@@ -25,13 +25,17 @@ int main()
 
 	program.ExecuteProgram(pc);
 
+	uint64 marker = program.GetStackAllocator()->GetMarker();
 	uint64 maxStackUsage = program.GetStackAllocator()->GetMaxUsage();
 	uint64 numHeapAllocs = program.GetHeapAllocator()->GetNumAllocs();
 	uint64 numHeapFrees = program.GetHeapAllocator()->GetNumFrees();
+	uint32 stackSize = program.GetStackSize();
 
+	std::cout << "Stack marker: " << Memory::BytesToKB(marker) << "KB" << std::endl;
 	std::cout << "Max stack usage: " << Memory::BytesToKB(maxStackUsage) << "KB" << std::endl;
 	std::cout << "Num heap allocs: " << numHeapAllocs << std::endl;
 	std::cout << "Num heap frees: " << numHeapFrees << std::endl;
+	std::cout << "Stack size: " << stackSize << std::endl;
 
 	return 0;
 }

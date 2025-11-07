@@ -85,6 +85,12 @@ void ASTExpressionBinary::EmitCode(Program* program)
 	case ASTOperator::MINUS: program->WriteOPCode(OpCode::SUBTRACT); break;
 	case ASTOperator::MULTIPLY: program->WriteOPCode(OpCode::MULTIPLY); break;
 	case ASTOperator::DIVIDE: program->WriteOPCode(OpCode::DIVIDE); break;
+	case ASTOperator::LESS: program->WriteOPCode(OpCode::LESS); break;
+	case ASTOperator::GREATER: program->WriteOPCode(OpCode::GREATER); break;
+	case ASTOperator::LESS_EQUALS: program->WriteOPCode(OpCode::LESS_EQUAL); break;
+	case ASTOperator::GREATER_EQUALS: program->WriteOPCode(OpCode::GREATER_EQUAL); break;
+	case ASTOperator::EQUALS: program->WriteOPCode(OpCode::EQUALS); break;
+	case ASTOperator::NOT_EQUALS: program->WriteOPCode(OpCode::NOT_EQUALS); break;
 	}
 }
 
@@ -318,8 +324,12 @@ TypeInfo ASTExpressionDeclareObjectAssign::GetTypeInfo(Program* program)
 
 void ASTExpressionMemberAccess::EmitCode(Program* program)
 {
-	if (!isStatement)
-		program->AddPushMemberCommand(scope, variableID, offset, memberType, memberPointerLevel, arrayIndex);
+	if (isStatement) return;
+
+	if (indexExpr)
+		indexExpr->EmitCode(program);
+
+	program->AddPushMemberCommand(scope, variableID, offset, memberType, memberPointerLevel, indexExpr != nullptr);
 }
 
 TypeInfo ASTExpressionMemberAccess::GetTypeInfo(Program* program)
@@ -331,7 +341,10 @@ void ASTExpressionMemberSet::EmitCode(Program* program)
 {
 	uint64 memberSize = program->GetTypeSize(memberType);
 	assignExpr->EmitCode(program);
-	program->AddMemberSetCommand(scope, variableID, offset, memberType, memberSize, memberPointerLevel, arrayIndex);
+	if (indexExpr)
+		indexExpr->EmitCode(program);
+
+	program->AddMemberSetCommand(scope, variableID, offset, memberType, memberSize, memberPointerLevel, indexExpr != nullptr);
 }
 
 TypeInfo ASTExpressionMemberSet::GetTypeInfo(Program* program)
@@ -381,4 +394,145 @@ void ASTExpressionDirectMemberAccess::EmitCode(Program* program)
 TypeInfo ASTExpressionDirectMemberAccess::GetTypeInfo(Program* program)
 {
 	return memberTypeInfo;
+}
+
+void ASTExpressionThis::EmitCode(Program* program)
+{
+	if (!isStatement)
+		program->WriteOPCode(OpCode::PUSH_THIS);
+}
+
+TypeInfo ASTExpressionThis::GetTypeInfo(Program* program)
+{
+	return TypeInfo(thisType, 0);
+}
+
+void ASTExpressionIfElse::EmitCode(Program* program)
+{
+	// Emit condition first
+	conditionExpr->EmitCode(program);
+
+	// Reserve jump for false condition (we’ll patch offset later);
+	program->WriteOPCode(OpCode::JUMP_IF_FALSE);
+	uint32 jumpIfFalsePos = program->GetCodeSize();
+	program->WriteUInt32(0); // placeholder for else jump target
+
+	if (ifScope != INVALID_ID)
+		program->AddPushScopeCommand(ifScope);
+
+	// Emit "if" block
+	for (uint32 i = 0; i < ifExprs.size(); i++)
+		ifExprs[i]->EmitCode(program);
+
+	if (ifScope != INVALID_ID)
+		program->AddPopScopeCommand();
+
+	// Reserve jump over else body
+	program->WriteOPCode(OpCode::JUMP);
+	uint32 jumpToEndPos = program->GetCodeSize();
+	program->WriteUInt32(0); // placeholder for end jump target
+
+	// Compute else label position (current code position)
+	uint32 elseLabelPos = program->GetCodeSize();
+
+	// Patch first jump (false -> else start)
+	program->PatchUInt32(jumpIfFalsePos, elseLabelPos);
+
+	if (elseScope != INVALID_ID)
+		program->AddPushScopeCommand(elseScope);
+
+	// Emit "else" block
+	for (uint32 i = 0; i < elseExprs.size(); i++)
+		elseExprs[i]->EmitCode(program);
+
+	if (elseScope != INVALID_ID)
+		program->AddPopScopeCommand();
+
+	// Compute end label position (after else)
+	uint32 endLabelPos = program->GetCodeSize();
+
+	// Patch jump over else
+	program->PatchUInt32(jumpToEndPos, endLabelPos);
+}
+
+TypeInfo ASTExpressionIfElse::GetTypeInfo(Program* program)
+{
+	return TypeInfo(INVALID_ID, 0);
+}
+
+void ASTExpressionFor::EmitCode(Program* program)
+{
+	if (declareExpr)
+		declareExpr->EmitCode(program);
+
+	uint32 conditionPos = program->GetCodeSize();
+
+	program->AddPushScopeCommand(forScope);
+
+	if (conditionExpr)
+		conditionExpr->EmitCode(program);
+	else
+	{
+		program->AddPushConstantBoolCommand(true);
+	}
+
+	program->WriteOPCode(OpCode::JUMP_IF_FALSE);
+	uint32 jumpIfFalsePos = program->GetCodeSize();
+	program->WriteUInt32(0);
+
+	for (uint32 i = 0; i < forExprs.size(); i++)
+		forExprs[i]->EmitCode(program);
+
+	if (incrExpr)
+		incrExpr->EmitCode(program);
+
+	program->AddPopScopeCommand();
+
+	program->WriteOPCode(OpCode::JUMP);
+	program->WriteUInt32(conditionPos);
+
+	uint32 loopEndPos = program->GetCodeSize();
+	program->PatchUInt32(jumpIfFalsePos, loopEndPos);
+}
+
+TypeInfo ASTExpressionFor::GetTypeInfo(Program* program)
+{
+	return TypeInfo(INVALID_ID, 0);
+}
+
+void ASTExpressionUnaryUpdate::EmitCode(Program* program)
+{
+	expr->EmitCode(program); //pushes variable/member/etc onto stack
+	program->AddUnaryUpdateCommand((uint8)op, !isStatement);
+}
+
+TypeInfo ASTExpressionUnaryUpdate::GetTypeInfo(Program* program)
+{
+	return expr->GetTypeInfo(program);
+}
+
+void ASTExpressionWhile::EmitCode(Program* program)
+{
+	uint32 conditionPos = program->GetCodeSize();
+	program->AddPushScopeCommand(whileScope);
+	conditionExpr->EmitCode(program);
+
+	program->WriteOPCode(OpCode::JUMP_IF_FALSE);
+	uint32 jumpIfFalsePos = program->GetCodeSize();
+	program->WriteUInt32(0);
+
+	for (uint32 i = 0; i < whileExprs.size(); i++)
+		whileExprs[i]->EmitCode(program);
+
+	program->AddPopScopeCommand();
+	program->WriteOPCode(OpCode::JUMP);
+	program->WriteUInt32(conditionPos);
+
+	uint32 loopEndPos = program->GetCodeSize();
+	program->PatchUInt32(jumpIfFalsePos, loopEndPos);
+}
+
+TypeInfo ASTExpressionWhile::GetTypeInfo(Program* program)
+{
+	return TypeInfo(INVALID_ID, 0);
 }

@@ -10,12 +10,14 @@
 
 enum class OpCode : uint16
 {
-	JUMP,
+	JUMP, JUMP_IF_FALSE,
 	PUSH_UINT8, PUSH_UINT16, PUSH_UINT32, PUSH_UINT64,
 	PUSH_INT8, PUSH_INT16, PUSH_INT32, PUSH_INT64,
 	PUSH_REAL32, PUSH_REAL64,
 	PUSH_CHAR, PUSH_BOOL, PUSH_STRING,
-	PUSH_VARIABLE, PUSH_MEMBER,
+	PUSH_VARIABLE, PUSH_MEMBER, PUSH_THIS,
+
+	PUSH_SCOPE, POP_SCOPE,
 
 	DECLARE_UINT8, DECLARE_UINT16, DECLARE_UINT32, DECLARE_UINT64,
 	DECLARE_INT8, DECLARE_INT16, DECLARE_INT32, DECLARE_INT64,
@@ -30,10 +32,11 @@ enum class OpCode : uint16
 
 	NEW_ARRAY,
 
-
 	POP, DUP, SWAP,
 
 	ADD, SUBTRACT, MULTIPLY, DIVIDE,
+	LESS, GREATER, LESS_EQUAL, GREATER_EQUAL, EQUALS, NOT_EQUALS,
+	UNARY_UPDATE,
 
 	MODULE_CONSTANT, RETURN,
 	MODULE_FUNCTION_CALL, STATIC_FUNCTION_CALL, MEMBER_FUNCTION_CALL,
@@ -76,7 +79,7 @@ public:
 	void AddPushConstantBoolCommand(bool value);
 	void AddPushConstantStringCommand(const std::string& value, ID scopeID);
 	void AddPushVariableCommand(ID scope, ID variableID);
-	void AddPushMemberCommand(ID scope, ID variableID, uint64 offset, uint16 memberType, uint8 memberPointerLevel, uint32 arrayIndex);
+	void AddPushMemberCommand(ID scope, ID variableID, uint64 offset, uint16 memberType, uint8 memberPointerLevel, bool indexArray);
 	void AddEndCommand();
 	void AddReturnCommand(bool returnsValue);
 	void AddDeclarePrimitiveCommand(ValueType type, ID scope, ID variableID);
@@ -86,7 +89,7 @@ public:
 	void AddDeclareObjectWithConstructorCommand(uint16 type, uint16 functionID, ID scope, ID variableID);
 	void AddDeclareObjectWithAssignCommand(uint16 type, ID scope, ID variableID);
 	void AddVariableSetCommand(ID scope, ID variableID);
-	void AddMemberSetCommand(ID scope, ID variableID, uint64 offset, uint16 type, uint64 size, uint8 memberPointerLevel, uint32 arrayIndex);
+	void AddMemberSetCommand(ID scope, ID variableID, uint64 offset, uint16 type, uint64 size, uint8 memberPointerLevel, bool indexArray);
 	void AddNewArrayCommand(uint16 type, uint8 pointerLevel);
 
 	void AddModuleFunctionCallCommand(ID moduleID, uint16 functionID, uint8 argCount, bool usesReturnValue);
@@ -97,7 +100,12 @@ public:
 	void AddDirectMemberAccessCommand(uint64 offset, uint16 memberType, uint8 memberPointerLevel);
 	void AddDirectMemberAssignCommand(uint64 offset, uint16 memberType, uint8 memberPointerLevel, uint64 memberTypeSize);
 
+	void AddPushScopeCommand(ID scope);
+	void AddPopScopeCommand();
+	void AddUnaryUpdateCommand(uint8 type, bool pushResultToStack);
+
 	uint32 GetCodeSize() const;
+	uint32 GetStackSize() const;
 
 	void AddModule(const std::string& name, ID id);
 	ID GetModuleID(const std::string& name) const;
@@ -118,6 +126,8 @@ public:
 	void WriteReal64(real64 value);
 	void WriteOPCode(OpCode code);
 	void WriteString(const std::string& str);
+
+	void PatchUInt32(uint32 pos, uint32 value);
 
 	HeapAllocator* GetHeapAllocator() const;
 	BumpAllocator* GetStackAllocator() const;
@@ -180,6 +190,7 @@ private:
 	std::vector<void*> m_StringLiterals;
 
 	std::vector<Value> m_ThisStack;
+	std::vector<std::pair<ID, uint64>> m_ScopeStack;
 
 	ID m_ClassWithMainFunction;
 };

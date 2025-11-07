@@ -522,6 +522,179 @@ bool Parser::ParseStatement(Function* function, Tokenizer* tokenizer, ID current
 			return true;
 		}
 	}
+	else if (t.type == TokenTypeT::IF)
+	{
+		if (tokenizer->Expect(TokenTypeT::OPEN_PAREN)) return false;
+		ASTExpression* conditionExpr = ParseExpression(tokenizer, currentScope);
+		if (tokenizer->Expect(TokenTypeT::CLOSE_PAREN)) return false;
+
+		ID ifScope = INVALID_ID;
+		ID elseScope = INVALID_ID;
+		std::vector<ASTExpression*> ifExprs;
+		std::vector<ASTExpression*> elseExprs;
+
+		Token next = tokenizer->PeekToken();
+		if (next.type == TokenTypeT::OPEN_BRACE)
+		{
+			tokenizer->Expect(TokenTypeT::OPEN_BRACE);
+			ifScope = m_Program->CreateScope(currentScope);
+			while (true)
+			{
+				Token peekBody = tokenizer->PeekToken();
+				if (peekBody.type == TokenTypeT::CLOSE_BRACE) { tokenizer->GetToken(); break; }
+				if (!ParseStatement(function, tokenizer, ifScope)) return false;
+				ASTExpression* statement = function->body.back();
+				function->body.pop_back();
+				ifExprs.push_back(statement);
+			}
+		}
+		else
+		{
+			if (!ParseStatement(function, tokenizer, currentScope))
+				return false;
+
+			ASTExpression* statement = function->body.back();
+			function->body.pop_back();
+			ifExprs.push_back(statement);
+		}
+
+		Token maybeElse = tokenizer->PeekToken();
+		if (maybeElse.type == TokenTypeT::ELSE)
+		{
+			tokenizer->GetToken();
+			Token braceElse = tokenizer->PeekToken();
+			if (braceElse.type == TokenTypeT::OPEN_BRACE)
+			{
+				tokenizer->GetToken();
+				elseScope = m_Program->CreateScope(currentScope);
+				while (true)
+				{
+					Token peekBody = tokenizer->PeekToken();
+					if (peekBody.type == TokenTypeT::CLOSE_BRACE) { tokenizer->GetToken(); break; }
+					if (!ParseStatement(function, tokenizer, elseScope)) return false;
+					ASTExpression* statement = function->body.back();
+					function->body.pop_back();
+					elseExprs.push_back(statement);
+				}
+			}
+			else
+			{
+				if (!ParseStatement(function, tokenizer, currentScope)) return false;
+				ASTExpression* statement = function->body.back();
+				function->body.pop_back();
+				elseExprs.push_back(statement);
+			}
+		}
+
+		ASTExpressionIfElse* ifElseExpr = new ASTExpressionIfElse(currentScope, ifScope, elseScope, conditionExpr, ifExprs, elseExprs);
+		function->body.push_back(ifElseExpr);
+		return true;
+	}
+	else if (t.type == TokenTypeT::FOR)
+	{
+		if (tokenizer->Expect(TokenTypeT::OPEN_PAREN)) return false;
+
+		ASTExpression* declareExpr = nullptr;
+		ASTExpression* conditionExpr = nullptr;
+		ASTExpression* incrementExpr = nullptr;
+		std::vector<ASTExpression*> body;
+		ID bodyScope = INVALID_ID;
+
+		// init
+		Token peek = tokenizer->PeekToken();
+		if (peek.type != TokenTypeT::SEMICOLON)
+		{
+			if (!ParseStatement(function, tokenizer, currentScope)) return false;
+			declareExpr = function->body.back();
+			function->body.pop_back();
+		}
+		else 
+		{ 
+			tokenizer->GetToken();
+		}
+
+		// condition
+		peek = tokenizer->PeekToken();
+		if (peek.type != TokenTypeT::SEMICOLON)
+			conditionExpr = ParseExpression(tokenizer, currentScope);
+
+		if (tokenizer->Expect(TokenTypeT::SEMICOLON)) return false;
+
+		// increment
+		peek = tokenizer->PeekToken();
+		if (peek.type != TokenTypeT::CLOSE_PAREN)
+		{
+			if (!ParseStatement(function, tokenizer, currentScope)) return false;
+			incrementExpr = function->body.back();
+			function->body.pop_back();
+		}
+
+		// body
+		Token brace = tokenizer->PeekToken();
+		if (brace.type == TokenTypeT::OPEN_BRACE)
+		{
+			tokenizer->GetToken(); // consume '{'
+			ID loopScope = m_Program->CreateScope(currentScope);
+			bodyScope = loopScope;
+			while (true)
+			{
+				Token peekBody = tokenizer->PeekToken();
+				if (peekBody.type == TokenTypeT::CLOSE_BRACE) { tokenizer->GetToken(); break; }
+				if (!ParseStatement(function, tokenizer, loopScope)) return false;
+				ASTExpression* statement = function->body.back();
+				function->body.pop_back();
+				body.push_back(statement);
+			}
+		}
+		else
+		{
+			if (!ParseStatement(function, tokenizer, currentScope)) return false;
+			ASTExpression* statement = function->body.back();
+			function->body.pop_back();
+			body.push_back(statement);
+		}
+
+		ASTExpressionFor* forExpr = new ASTExpressionFor(currentScope, bodyScope, declareExpr, conditionExpr, incrementExpr, body);
+		function->body.push_back(forExpr);
+		return true;
+	}
+	else if (t.type == TokenTypeT::WHILE)
+	{
+		std::vector<ASTExpression*> body;
+		ID bodyScope = INVALID_ID;
+
+		if (tokenizer->Expect(TokenTypeT::OPEN_PAREN)) return false;
+		ASTExpression* conditionExpr = ParseExpression(tokenizer, currentScope);
+		if (tokenizer->Expect(TokenTypeT::CLOSE_PAREN)) return false;
+
+		Token brace = tokenizer->PeekToken();
+		if (brace.type == TokenTypeT::OPEN_BRACE)
+		{
+			tokenizer->Expect(TokenTypeT::OPEN_BRACE);
+			ID loopScope = m_Program->CreateScope(currentScope);
+			bodyScope = loopScope;
+			while (true)
+			{
+				Token peekBody = tokenizer->PeekToken();
+				if (peekBody.type == TokenTypeT::CLOSE_BRACE) { tokenizer->GetToken(); break; }
+				if (!ParseStatement(function, tokenizer, loopScope)) return false;
+				ASTExpression* statement = function->body.back();
+				function->body.pop_back();
+				body.push_back(statement);
+			}
+		}
+		else
+		{
+			if (!ParseStatement(function, tokenizer, currentScope)) return false;
+			ASTExpression* statement = function->body.back();
+			function->body.pop_back();
+			body.push_back(statement);
+		}
+
+		ASTExpressionWhile* whileExpr = new ASTExpressionWhile(currentScope, bodyScope, conditionExpr, body);
+		function->body.push_back(whileExpr);
+		return true;
+	}
 	else if (t.type == TokenTypeT::UINT8)
 	{
 		declaringPrimitive = true;
@@ -799,10 +972,16 @@ ASTExpression* Parser::ParseUnary(Tokenizer* tokenizer, ID currentScope)
 		return addressOfExpr;
 	} break;
 	case TokenTypeT::PLUS_PLUS: {
-		
+		tokenizer->Expect(TokenTypeT::PLUS_PLUS);
+		ASTExpression* expr = ParseExpression(tokenizer, currentScope);
+		ASTExpressionUnaryUpdate* unaryExpr = new ASTExpressionUnaryUpdate(currentScope, expr, ASTUnaryUpdateOp::PRE_INC);
+		return unaryExpr;
 	} break;
 	case TokenTypeT::MINUS_MINUS: {
-		
+		tokenizer->Expect(TokenTypeT::MINUS_MINUS);
+		ASTExpression* expr = ParseExpression(tokenizer, currentScope);
+		ASTExpressionUnaryUpdate* unaryExpr = new ASTExpressionUnaryUpdate(currentScope, expr, ASTUnaryUpdateOp::PRE_DEC);
+		return unaryExpr;
 	} break;
 	case TokenTypeT::NOT: { // logical not
 		
@@ -826,12 +1005,14 @@ ASTExpression* Parser::ParsePostFix(Tokenizer* tokenizer, ID currentScope)
 		if (tok.type == TokenTypeT::PLUS_PLUS)
 		{
 			tokenizer->GetToken();
-			
+			ASTExpressionUnaryUpdate* unaryExpr = new ASTExpressionUnaryUpdate(currentScope, expr, ASTUnaryUpdateOp::POST_INC);
+			return unaryExpr;
 		}
 		else if (tok.type == TokenTypeT::MINUS_MINUS)
 		{
 			tokenizer->GetToken();
-			
+			ASTExpressionUnaryUpdate* unaryExpr = new ASTExpressionUnaryUpdate(currentScope, expr, ASTUnaryUpdateOp::POST_DEC);
+			return unaryExpr;
 		}
 		else if (tok.type == TokenTypeT::PLUS_EQUALS)
 		{
@@ -1051,9 +1232,16 @@ ASTExpression* Parser::ParsePrimary(Tokenizer* tokenizer, ID currentScope)
 			return newArrayExpr;
 		}
 	}
-	else if (t.type == TokenTypeT::IDENTIFIER)
+	else if (t.type == TokenTypeT::IDENTIFIER || t.type == TokenTypeT::THIS)
 	{
 		Token next = tokenizer->GetToken();
+
+		if (t.type == TokenTypeT::THIS && next.type != TokenTypeT::DOT)
+		{
+			ASTExpressionThis* thisExpr = new ASTExpressionThis(currentScope, m_Program->GetClassID(g_CurrentClassName));
+			return thisExpr;
+		}
+
 		if (next.type == TokenTypeT::OPEN_PAREN) //Function call
 		{
 			std::string functionName(t.text, t.length);
@@ -1083,19 +1271,22 @@ ASTExpression* Parser::ParsePrimary(Tokenizer* tokenizer, ID currentScope)
 			}
 
 			Token peek = tokenizer->PeekToken();
+
+			ASTExpression* indexExpr = nullptr;
+			if (peek.type == TokenTypeT::OPEN_BRACKET)
+			{
+				tokenizer->Expect(TokenTypeT::OPEN_BRACKET);
+				indexExpr = ParseExpression(tokenizer, currentScope);
+				if (tokenizer->Expect(TokenTypeT::CLOSE_BRACKET)) return nullptr;
+			}
+
 			if (peek.type != TokenTypeT::OPEN_PAREN) //Member or static variable
 			{
 				std::string className(t.text, t.length);
 				ID classID = m_Program->GetClassID(className);
 				ID moduleID = m_Program->GetModuleID(className);
 
-				ASTExpression* indexExpr = nullptr;
-				if (peek.type == TokenTypeT::OPEN_BRACKET)
-				{
-					tokenizer->Expect(TokenTypeT::OPEN_BRACKET);
-					indexExpr = ParseExpression(tokenizer, currentScope);
-					if (tokenizer->Expect(TokenTypeT::CLOSE_BRACKET)) return nullptr;
-				}
+				
 
 				if (moduleID != INVALID_ID)
 				{
@@ -1119,13 +1310,31 @@ ASTExpression* Parser::ParsePrimary(Tokenizer* tokenizer, ID currentScope)
 						ID variableID = m_Program->GetScope(classScope)->GetVariableID(memberName, false);
 						if (assignExpr)
 						{
-							ASTExpressionVariableSet* variableSetExpr = new ASTExpressionVariableSet(classScope, variableID, assignExpr);
-							return variableSetExpr;
+							if (indexExpr != nullptr)
+							{
+								ASTExpressionVariableSet* variableSetExpr = new ASTExpressionVariableSet(classScope, variableID, nullptr);
+								ASTExpressionIndex* indexExpr_ = new ASTExpressionIndex(currentScope, variableSetExpr, indexExpr, assignExpr);
+								return indexExpr_;
+							}
+							else
+							{
+								ASTExpressionVariableSet* variableSetExpr = new ASTExpressionVariableSet(classScope, variableID, assignExpr);
+								return variableSetExpr;
+							}
 						}
 						else
 						{
-							ASTExpressionVariable* variableExpr = new ASTExpressionVariable(classScope, variableID);
-							return variableExpr;
+							if (indexExpr != nullptr)
+							{
+								ASTExpressionVariable* variableExpr = new ASTExpressionVariable(classScope, variableID);
+								ASTExpressionIndex* indexExpr_ = new ASTExpressionIndex(currentScope, variableExpr, indexExpr, nullptr);
+								return indexExpr_;
+							}
+							else
+							{
+								ASTExpressionVariable* variableExpr = new ASTExpressionVariable(classScope, variableID);
+								return variableExpr;
+							}
 						}
 					}
 				}
@@ -1134,11 +1343,17 @@ ASTExpression* Parser::ParsePrimary(Tokenizer* tokenizer, ID currentScope)
 					Scope* scope = m_Program->GetScope(currentScope);
 					std::string memberName = className;
 					ID variableID = scope->GetVariableID(memberName, false);
+
 					if (variableID == INVALID_ID)
 					{
 						ID thisID = m_Program->GetClassID(g_CurrentClassName);
 						TypeInfo memberTypeInfo;
 						members.insert(members.begin(), memberName);
+						if (t.type == TokenTypeT::THIS)
+						{
+							members.erase(members.begin());
+						}
+
 						uint64 offset = m_Program->GetClass(thisID)->CalculateOffset(members, &memberTypeInfo);
 						if (offset == UINT64_MAX) return nullptr;
 
@@ -1166,12 +1381,64 @@ ASTExpression* Parser::ParsePrimary(Tokenizer* tokenizer, ID currentScope)
 					{
 						tokenizer->Expect(TokenTypeT::EQUALS);
 						ASTExpression* assignExpr = ParseExpression(tokenizer, currentScope);
-						ASTExpressionMemberSet* memberSetExpr = new ASTExpressionMemberSet(currentScope, variableID, offset, memberTypeInfo.type, memberTypeInfo.pointerLevel, assignExpr, 0);
+						ASTExpressionMemberSet* memberSetExpr = new ASTExpressionMemberSet(currentScope, variableID, offset, memberTypeInfo.type, memberTypeInfo.pointerLevel, assignExpr, indexExpr);
 						return memberSetExpr;
+					}
+					else if (equals.type == TokenTypeT::DOT)
+					{
+						tokenizer->Expect(TokenTypeT::DOT);
+						std::vector<std::string> identifiers;
+						while (true)
+						{
+							Token identifierToken = tokenizer->GetToken();
+							if (identifierToken.type != TokenTypeT::IDENTIFIER) return nullptr;
+							identifiers.push_back(std::string(identifierToken.text, identifierToken.length));
+							Token peek = tokenizer->PeekToken();
+							if (peek.type != TokenTypeT::DOT) break;
+							tokenizer->GetToken();
+						}
+
+						std::vector<std::string> updatedMembers;
+						for (uint32 i = 0; i < members.size(); i++)
+							updatedMembers.push_back(members[i]);
+						for (uint32 i = 0; i < identifiers.size(); i++)
+							updatedMembers.push_back(identifiers[i]);
+
+						
+
+						peek = tokenizer->PeekToken();
+						if (peek.type == TokenTypeT::OPEN_PAREN)
+						{
+							tokenizer->Expect(TokenTypeT::OPEN_PAREN);
+							std::vector<ASTExpression*> argExprs;
+							ParseArguments(tokenizer, currentScope, argExprs);
+							std::string functionName = updatedMembers.back();
+							updatedMembers.pop_back();
+							offset = m_Program->GetClass(variableTypeInfo.type)->CalculateOffset(updatedMembers, &memberTypeInfo);
+							ASTExpressionMemberAccess* memberAccessExpr = new ASTExpressionMemberAccess(currentScope, variableID, offset, memberTypeInfo.type, memberTypeInfo.pointerLevel, indexExpr);
+							ASTExpressionMemberFunctionCall* memberFunctionCall = new ASTExpressionMemberFunctionCall(currentScope, memberAccessExpr, functionName, argExprs);
+							return memberFunctionCall;
+						}
+						else if (peek.type == TokenTypeT::EQUALS)
+						{
+							offset = m_Program->GetClass(variableTypeInfo.type)->CalculateOffset(updatedMembers, &memberTypeInfo);
+							tokenizer->Expect(TokenTypeT::EQUALS);
+							ASTExpression* assignExpr = ParseExpression(tokenizer, currentScope);
+							ASTExpressionMemberSet* memberSetExpr = new ASTExpressionMemberSet(currentScope, variableID, offset, memberTypeInfo.type, memberTypeInfo.pointerLevel, assignExpr, indexExpr);
+							return memberSetExpr;
+						}
+						else
+						{
+							offset = m_Program->GetClass(variableTypeInfo.type)->CalculateOffset(updatedMembers, &memberTypeInfo);
+							ASTExpressionMemberAccess* memberAccessExpr = new ASTExpressionMemberAccess(currentScope, variableID, offset, memberTypeInfo.type, memberTypeInfo.pointerLevel, indexExpr);
+							return memberAccessExpr;
+						}
+
+						uint32 bp = 0;
 					}
 					else
 					{
-						ASTExpressionMemberAccess* memberAccessExpr = new ASTExpressionMemberAccess(currentScope, variableID, offset, memberTypeInfo.type, memberTypeInfo.pointerLevel, 0);
+						ASTExpressionMemberAccess* memberAccessExpr = new ASTExpressionMemberAccess(currentScope, variableID, offset, memberTypeInfo.type, memberTypeInfo.pointerLevel, indexExpr);
 						return memberAccessExpr;
 					}
 				}
@@ -1204,16 +1471,49 @@ ASTExpression* Parser::ParsePrimary(Tokenizer* tokenizer, ID currentScope)
 				{
 					std::string variableName(t.text, t.length);
 					ID variableID = m_Program->GetScope(currentScope)->GetVariableID(variableName, false);
-					objExpr = new ASTExpressionVariable(currentScope, variableID);
+					if (variableID == INVALID_ID)
+					{
+						TypeInfo memberTypeInfo;
+						members.push_back(variableName);
+						uint64 offset = m_Program->GetClass(m_Program->GetClassID(g_CurrentClassName))->CalculateOffset(members, &memberTypeInfo);
+						if (offset == UINT64_MAX) return nullptr;
+						objExpr = new ASTExpressionDirectMemberAccess(currentScope, memberTypeInfo, offset, nullptr);
+						if (indexExpr != nullptr)
+						{
+							objExpr = new ASTExpressionIndex(currentScope, objExpr, indexExpr, nullptr);
+						}
+					}
+					else
+					{
+						objExpr = new ASTExpressionVariable(currentScope, variableID);
+						if (indexExpr != nullptr)
+						{
+							objExpr = new ASTExpressionIndex(currentScope, objExpr, indexExpr, nullptr);
+						}
+					}
 				}
 				else
 				{
 					std::string variableName(t.text, t.length);
 					ID variableID = m_Program->GetScope(currentScope)->GetVariableID(variableName, false);
-					TypeInfo variableTypeInfo = m_Program->GetScope(currentScope)->GetVariableTypeInfo(variableID);
-					TypeInfo memberTypeInfo;
-					uint64 offset = m_Program->GetClass(variableTypeInfo.type)->CalculateOffset(members, &memberTypeInfo);
-					objExpr = new ASTExpressionMemberAccess(currentScope, variableID, offset, memberTypeInfo.type, memberTypeInfo.pointerLevel, 0);
+					if (variableID == INVALID_ID)
+					{
+						TypeInfo memberTypeInfo;
+						members.insert(members.begin(), variableName);
+						uint64 offset = m_Program->GetClass(m_Program->GetClassID(g_CurrentClassName))->CalculateOffset(members, &memberTypeInfo);
+						if (offset == UINT64_MAX) return nullptr;
+						objExpr = new ASTExpressionDirectMemberAccess(currentScope, memberTypeInfo, offset, nullptr);
+						if(indexExpr)
+							objExpr = new ASTExpressionIndex(currentScope, objExpr, indexExpr, nullptr);
+					}
+					else
+					{
+						TypeInfo variableTypeInfo = m_Program->GetScope(currentScope)->GetVariableTypeInfo(variableID);
+						TypeInfo memberTypeInfo;
+						uint64 offset = m_Program->GetClass(variableTypeInfo.type)->CalculateOffset(members, &memberTypeInfo);
+						if (offset == UINT64_MAX) return nullptr;
+						objExpr = new ASTExpressionMemberAccess(currentScope, variableID, offset, memberTypeInfo.type, memberTypeInfo.pointerLevel, indexExpr);
+					}
 				}
 
 				ASTExpressionMemberFunctionCall* functionCallExpr = new ASTExpressionMemberFunctionCall(currentScope, objExpr, functionName, expressions);
@@ -1257,7 +1557,68 @@ ASTExpression* Parser::ParsePrimary(Tokenizer* tokenizer, ID currentScope)
 			}
 			else if (peek.type == TokenTypeT::DOT)
 			{
+				tokenizer->Expect(TokenTypeT::DOT);
+				std::vector<std::string> identifiers;
+				while (true)
+				{
+					Token identifierToken = tokenizer->GetToken();
+					if (identifierToken.type != TokenTypeT::IDENTIFIER) return nullptr;
+					identifiers.push_back(std::string(identifierToken.text, identifierToken.length));
+					Token peek = tokenizer->PeekToken();
+					if (peek.type != TokenTypeT::DOT) break;
+					tokenizer->GetToken();
+				}
 
+				peek = tokenizer->PeekToken();
+				ASTExpression* assignExpr = nullptr;
+				if (peek.type == TokenTypeT::EQUALS)
+				{
+					tokenizer->Expect(TokenTypeT::EQUALS);
+					assignExpr = ParseExpression(tokenizer, currentScope);
+				}
+				else if (peek.type == TokenTypeT::OPEN_PAREN)
+				{
+					tokenizer->Expect(TokenTypeT::OPEN_PAREN);
+					std::vector<ASTExpression*> argExprs;
+					ParseArguments(tokenizer, currentScope, argExprs);
+					std::string functionName = identifiers.back();
+					identifiers.pop_back();
+					ASTExpression* objExpr = nullptr;
+					std::string variableName(t.text, t.length);
+					ID variableID = m_Program->GetScope(currentScope)->GetVariableID(variableName, false);
+					if (identifiers.empty())
+					{
+						objExpr = new ASTExpressionVariable(currentScope, variableID);
+						objExpr = new ASTExpressionIndex(currentScope, objExpr, indexExpr, nullptr);
+					}
+					else
+					{
+						uint64 variableType = m_Program->GetScope(currentScope)->GetVariableTypeInfo(variableID).type;
+						TypeInfo memberTypeInfo;
+						uint64 offset = m_Program->GetClass(variableType)->CalculateOffset(identifiers, &memberTypeInfo);
+						objExpr = new ASTExpressionMemberAccess(currentScope, variableID, offset, memberTypeInfo.type, memberTypeInfo.pointerLevel, indexExpr);
+					}
+
+					ASTExpressionMemberFunctionCall* memberFunctionCallExpr = new ASTExpressionMemberFunctionCall(currentScope, objExpr, functionName, argExprs);
+					return memberFunctionCallExpr;
+				}
+
+				std::string variableName(t.text, t.length);
+				ID variableID = m_Program->GetScope(currentScope)->GetVariableID(variableName, false);
+				uint64 variableType = m_Program->GetScope(currentScope)->GetVariableTypeInfo(variableID).type;
+				TypeInfo memberTypeInfo;
+				uint64 offset = m_Program->GetClass(variableType)->CalculateOffset(identifiers, &memberTypeInfo);
+
+				if (assignExpr)
+				{
+					ASTExpressionMemberSet* memberSetExpr = new ASTExpressionMemberSet(currentScope, variableID, offset, memberTypeInfo.type, memberTypeInfo.pointerLevel, assignExpr, indexExpr);
+					return memberSetExpr;
+				}
+				else
+				{
+					ASTExpressionMemberAccess* memberAccessExpr = new ASTExpressionMemberAccess(currentScope, variableID, offset, memberTypeInfo.type, memberTypeInfo.pointerLevel, indexExpr);
+					return memberAccessExpr;
+				}
 			}
 
 			std::string variableName(t.text, t.length);

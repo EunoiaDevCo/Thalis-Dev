@@ -406,6 +406,240 @@ struct Value
 		return Value::MakeInt64(GetInt64() / rhs.GetInt64(), allocator);
 	}
 
+	inline Value LessThan(const Value& rhs, Allocator* allocator)
+	{
+		// both ints (any signedness)
+		if (IsInteger() && rhs.IsInteger())
+		{
+			bool lhsSigned = IsSigned();
+			bool rhsSigned = rhs.IsSigned();
+
+			// signed dominates — same rule as in Add()
+			if (lhsSigned || rhsSigned)
+			{
+				bool result = GetInt64() < rhs.GetInt64();
+				return MakeBool(result, allocator);
+			}
+			else
+			{
+				bool result = GetUInt64() < rhs.GetUInt64();
+				return MakeBool(result, allocator);
+			}
+		}
+
+		// floats dominate
+		if (IsReal() || rhs.IsReal())
+		{
+			bool result = GetReal64() < rhs.GetReal64();
+			return MakeBool(result, allocator);
+		}
+
+		// fallback — try int comparison
+		bool result = GetInt64() < rhs.GetInt64();
+		return MakeBool(result, allocator);
+	}
+
+	inline Value GreaterThan(const Value& rhs, Allocator* allocator)
+	{
+		// both ints (any signedness)
+		if (IsInteger() && rhs.IsInteger())
+		{
+			bool lhsSigned = IsSigned();
+			bool rhsSigned = rhs.IsSigned();
+
+			// signed dominates — same rule as in Add()
+			if (lhsSigned || rhsSigned)
+			{
+				bool result = GetInt64() > rhs.GetInt64();
+				return MakeBool(result, allocator);
+			}
+			else
+			{
+				bool result = GetUInt64() > rhs.GetUInt64();
+				return MakeBool(result, allocator);
+			}
+		}
+
+		// floats dominate
+		if (IsReal() || rhs.IsReal())
+		{
+			bool result = GetReal64() > rhs.GetReal64();
+			return MakeBool(result, allocator);
+		}
+
+		// fallback — try int comparison
+		bool result = GetInt64() > rhs.GetInt64();
+		return MakeBool(result, allocator);
+	}
+
+	inline Value LessThanOrEqual(const Value& rhs, Allocator* allocator)
+	{
+		// both ints (any signedness)
+		if (IsInteger() && rhs.IsInteger())
+		{
+			bool lhsSigned = IsSigned();
+			bool rhsSigned = rhs.IsSigned();
+
+			// signed dominates — same rule as in Add()
+			if (lhsSigned || rhsSigned)
+			{
+				bool result = GetInt64() <= rhs.GetInt64();
+				return MakeBool(result, allocator);
+			}
+			else
+			{
+				bool result = GetUInt64() <= rhs.GetUInt64();
+				return MakeBool(result, allocator);
+			}
+		}
+
+		// floats dominate
+		if (IsReal() || rhs.IsReal())
+		{
+			bool result = GetReal64() <= rhs.GetReal64();
+			return MakeBool(result, allocator);
+		}
+
+		// fallback — try int comparison
+		bool result = GetInt64() <= rhs.GetInt64();
+		return MakeBool(result, allocator);
+	}
+
+	inline Value GreaterThanOrEqual(const Value& rhs, Allocator* allocator)
+	{
+		// both ints (any signedness)
+		if (IsInteger() && rhs.IsInteger())
+		{
+			bool lhsSigned = IsSigned();
+			bool rhsSigned = rhs.IsSigned();
+
+			// signed dominates — same rule as in Add()
+			if (lhsSigned || rhsSigned)
+			{
+				bool result = GetInt64() >= rhs.GetInt64();
+				return MakeBool(result, allocator);
+			}
+			else
+			{
+				bool result = GetUInt64() >= rhs.GetUInt64();
+				return MakeBool(result, allocator);
+			}
+		}
+
+		// floats dominate
+		if (IsReal() || rhs.IsReal())
+		{
+			bool result = GetReal64() >= rhs.GetReal64();
+			return MakeBool(result, allocator);
+		}
+
+		// fallback — try int comparison
+		bool result = GetInt64() >= rhs.GetInt64();
+		return MakeBool(result, allocator);
+	}
+
+	inline Value Equals(const Value& rhs, Allocator* allocator)
+	{
+		// both ints (any signedness)
+		if (IsInteger() && rhs.IsInteger())
+		{
+			bool lhsSigned = IsSigned();
+			bool rhsSigned = rhs.IsSigned();
+
+			// signed dominates — same rule as in Add()
+			if (lhsSigned || rhsSigned)
+			{
+				bool result = GetInt64() == rhs.GetInt64();
+				return MakeBool(result, allocator);
+			}
+			else
+			{
+				bool result = GetUInt64() == rhs.GetUInt64();
+				return MakeBool(result, allocator);
+			}
+		}
+
+		// floats dominate
+		if (IsReal() || rhs.IsReal())
+		{
+			bool result = GetReal64() == rhs.GetReal64();
+			return MakeBool(result, allocator);
+		}
+
+		// fallback — try int comparison
+		bool result = GetInt64() == rhs.GetInt64();
+		return MakeBool(result, allocator);
+	}
+
+	inline Value NotEquals(const Value& rhs, Allocator* allocator)
+	{
+		// both ints (any signedness)
+		if (IsInteger() && rhs.IsInteger())
+		{
+			bool lhsSigned = IsSigned();
+			bool rhsSigned = rhs.IsSigned();
+
+			// signed dominates — same rule as in Add()
+			if (lhsSigned || rhsSigned)
+			{
+				bool result = GetInt64() != rhs.GetInt64();
+				return MakeBool(result, allocator);
+			}
+			else
+			{
+				bool result = GetUInt64() != rhs.GetUInt64();
+				return MakeBool(result, allocator);
+			}
+		}
+
+		// floats dominate
+		if (IsReal() || rhs.IsReal())
+		{
+			bool result = GetReal64() != rhs.GetReal64();
+			return MakeBool(result, allocator);
+		}
+
+		// fallback — try int comparison
+		bool result = GetInt64() != rhs.GetInt64();
+		return MakeBool(result, allocator);
+	}
+
+	inline void Increment()
+	{
+		switch ((ValueType)type)
+		{
+		case ValueType::UINT8:   (*(uint8*)data)++; break;
+		case ValueType::UINT16:  (*(uint16*)data)++; break;
+		case ValueType::UINT32:  (*(uint32*)data)++; break;
+		case ValueType::UINT64:  (*(uint64*)data)++; break;
+		case ValueType::INT8:    (*(int8*)data)++; break;
+		case ValueType::INT16:   (*(int16*)data)++; break;
+		case ValueType::INT32:   (*(int32*)data)++; break;
+		case ValueType::INT64:   (*(int64*)data)++; break;
+		case ValueType::REAL32:  (*(real32*)data)++; break;
+		case ValueType::REAL64:  (*(real64*)data)++; break;
+		case ValueType::CHAR:    (*(char*)data)++; break;
+		}
+	}
+
+	inline void Decrement()
+	{
+		switch ((ValueType)type)
+		{
+		case ValueType::UINT8:   (*(uint8*)data)--; break;
+		case ValueType::UINT16:  (*(uint16*)data)--; break;
+		case ValueType::UINT32:  (*(uint32*)data)--; break;
+		case ValueType::UINT64:  (*(uint64*)data)--; break;
+		case ValueType::INT8:    (*(int8*)data)--; break;
+		case ValueType::INT16:   (*(int16*)data)--; break;
+		case ValueType::INT32:   (*(int32*)data)--; break;
+		case ValueType::INT64:   (*(int64*)data)--; break;
+		case ValueType::REAL32:  (*(real32*)data)--; break;
+		case ValueType::REAL64:  (*(real64*)data)--; break;
+		case ValueType::CHAR:    (*(char*)data)--; break;
+		}
+	}
+
 	inline friend std::ostream& operator<<(std::ostream& os, const Value& v)
 	{
 		switch ((ValueType)v.type)
@@ -512,6 +746,7 @@ struct Value
 		value.data = allocator->Alloc(sizeof(uint8));
 		*(uint8*)value.data = v;
 		value.pointerLevel = 0;
+		value.isArray = false;
 		return value;
 	}
 
@@ -522,6 +757,7 @@ struct Value
 		value.data = allocator->Alloc(sizeof(uint16));
 		*(uint16*)value.data = v;
 		value.pointerLevel = 0;
+		value.isArray = false;
 		return value;
 	}
 
@@ -532,6 +768,7 @@ struct Value
 		value.data = allocator->Alloc(sizeof(uint32));
 		*(uint32*)value.data = v;
 		value.pointerLevel = 0;
+		value.isArray = false;
 		return value;
 	}
 
@@ -542,6 +779,7 @@ struct Value
 		value.data = allocator->Alloc(sizeof(uint64));
 		*(uint64*)value.data = v;
 		value.pointerLevel = 0;
+		value.isArray = false;
 		return value;
 	}
 
@@ -552,6 +790,7 @@ struct Value
 		value.data = allocator->Alloc(sizeof(int8));
 		*(int8*)value.data = v;
 		value.pointerLevel = 0;
+		value.isArray = false;
 		return value;
 	}
 
@@ -562,6 +801,7 @@ struct Value
 		value.data = allocator->Alloc(sizeof(int16));
 		*(int16*)value.data = v;
 		value.pointerLevel = 0;
+		value.isArray = false;
 		return value;
 	}
 
@@ -572,6 +812,7 @@ struct Value
 		value.data = allocator->Alloc(sizeof(int32));
 		*(int32*)value.data = v;
 		value.pointerLevel = 0;
+		value.isArray = false;
 		return value;
 	}
 
@@ -582,6 +823,7 @@ struct Value
 		value.data = allocator->Alloc(sizeof(int64));
 		*(int64*)value.data = v;
 		value.pointerLevel = 0;
+		value.isArray = false;
 		return value;
 	}
 
@@ -592,6 +834,7 @@ struct Value
 		value.data = allocator->Alloc(sizeof(real32));
 		*(real32*)value.data = v;
 		value.pointerLevel = 0;
+		value.isArray = false;
 		return value;
 	}
 
@@ -612,6 +855,7 @@ struct Value
 		value.data = allocator->Alloc(sizeof(bool));
 		*(bool*)value.data = v;
 		value.pointerLevel = 0;
+		value.isArray = false;
 		return value;
 	}
 
@@ -622,6 +866,7 @@ struct Value
 		value.data = allocator->Alloc(sizeof(char));
 		*(char*)value.data = v;
 		value.pointerLevel = 0;
+		value.isArray = false;
 		return value;
 	}
 
@@ -636,7 +881,7 @@ struct Value
 		char* chars = (char*)((uint8*)value.data + sizeof(uint32));
 		memcpy(chars, str.data(), len);
 		chars[len] = '\0';
-
+		value.isArray = false;
 		return value;
 	}
 
@@ -646,6 +891,7 @@ struct Value
 		value.type = type;
 		value.pointerLevel = pointerLevel;
 		value.data = data;
+		value.isArray = false;
 		return value;
 	}
 
@@ -679,6 +925,7 @@ struct Value
 		value.type = type;
 		value.data = nullptr;
 		value.pointerLevel = pointerLevel;
+		value.isArray = false;
 		return value;
 	}
 };

@@ -169,6 +169,7 @@ Value Value::MakeArray(Program* program, uint16 type, uint8 pointerLevel, uint32
 	value.type = type;
 	value.pointerLevel = 1;
 	value.data = (uint8*)arrayData + sizeof(ArrayHeader); 
+	value.isArray = true;
 
 	return value;
 }
@@ -181,6 +182,7 @@ Value Value::MakeObject(Program* program, uint16 type, Allocator* allocator)
 	value.type = type;
 	value.pointerLevel = 0;
 	value.data = allocator->Alloc(typeSize);
+	value.isArray = false;
 
 	return value;
 }

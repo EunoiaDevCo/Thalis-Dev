@@ -130,7 +130,7 @@ void Program::AddPushVariableCommand(ID scope, ID variableID)
 	WriteUInt32(variableID);
 }
 
-void Program::AddPushMemberCommand(ID scope, ID variableID, uint64 offset, uint16 memberType, uint8 memberPointerLevel, uint32 index)
+void Program::AddPushMemberCommand(ID scope, ID variableID, uint64 offset, uint16 memberType, uint8 memberPointerLevel, bool indexArray)
 {
 	WriteOPCode(OpCode::PUSH_MEMBER);
 	WriteUInt32(scope);
@@ -138,7 +138,7 @@ void Program::AddPushMemberCommand(ID scope, ID variableID, uint64 offset, uint1
 	WriteUInt64(offset);
 	WriteUInt16(memberType);
 	WriteUInt8(memberPointerLevel);
-	WriteUInt32(index);
+	WriteUInt8(indexArray);
 }
 
 void Program::AddEndCommand()
@@ -228,7 +228,7 @@ void Program::AddVariableSetCommand(ID scope, ID variableID)
 	WriteUInt32(variableID);
 }
 
-void Program::AddMemberSetCommand(ID scope, ID variableID, uint64 offset, uint16 type, uint64 size, uint8 memberPointerLevel, uint32 arrayIndex)
+void Program::AddMemberSetCommand(ID scope, ID variableID, uint64 offset, uint16 type, uint64 size, uint8 memberPointerLevel, bool indexArray)
 {
 	WriteOPCode(OpCode::MEMBER_SET);
 	WriteUInt32(scope);
@@ -237,7 +237,7 @@ void Program::AddMemberSetCommand(ID scope, ID variableID, uint64 offset, uint16
 	WriteUInt16(type);
 	WriteUInt64(size);
 	WriteUInt8(memberPointerLevel);
-	WriteUInt32(arrayIndex);
+	WriteUInt8(indexArray);
 }
 
 void Program::AddNewArrayCommand(uint16 type, uint8 pointerLevel)
@@ -296,9 +296,32 @@ void Program::AddDirectMemberAssignCommand(uint64 offset, uint16 memberType, uin
 	WriteUInt64(memberTypeSize);
 }
 
+void Program::AddPushScopeCommand(ID scope)
+{
+	WriteOPCode(OpCode::PUSH_SCOPE);
+	WriteUInt32(scope);
+}
+
+void Program::AddPopScopeCommand()
+{
+	WriteOPCode(OpCode::POP_SCOPE);
+}
+
+void Program::AddUnaryUpdateCommand(uint8 type, bool pushResultToStack)
+{
+	WriteOPCode(OpCode::UNARY_UPDATE);
+	WriteUInt8(type);
+	WriteUInt8(pushResultToStack);
+}
+
 uint32 Program::GetCodeSize() const
 {
 	return m_Code.size();
+}
+
+uint32 Program::GetStackSize() const
+{
+	return m_Stack.size();
 }
 
 uint64 Program::GetTypeSize(uint16 type)
@@ -385,6 +408,25 @@ void Program::ExecuteOpCode(OpCode opcode)
 	{
 	case OpCode::JUMP: {
 		m_ProgramCounter = ReadUInt32();
+	} break; 
+	case OpCode::JUMP_IF_FALSE: {
+		uint32 target = ReadUInt32();
+		Value condition = m_Stack.back();
+		m_Stack.pop_back();
+		if (!condition.GetBool())
+			m_ProgramCounter = target;
+	} break;
+	case OpCode::PUSH_SCOPE: {
+		ID scope = ReadUInt32();
+		uint64 marker = m_StackAllocator->GetMarker();
+		m_ScopeStack.push_back(std::make_pair(scope, marker));
+	} break;
+	case OpCode::POP_SCOPE: {
+		std::pair<ID, uint64> scope = m_ScopeStack.back();
+		m_ScopeStack.pop_back();
+		if(scope.first != INVALID_ID)
+			GetScope(scope.first)->Clear(this);
+		m_StackAllocator->FreeToMarker(scope.second);
 	} break;
 	case OpCode::PUSH_UINT8: {
 		m_Stack.push_back(Value::MakeUInt8(ReadUInt8(), m_StackAllocator));
@@ -440,9 +482,11 @@ void Program::ExecuteOpCode(OpCode opcode)
 		uint64 offset = ReadUInt64();
 		uint16 memberType = ReadUInt16();
 		uint8 memberPointerLevel = ReadUInt8();
-		uint32 index = ReadUInt32();
-		if (index > 0)
+		bool indexArray = ReadUInt8();
+		if (indexArray)
 		{
+			uint32 index = m_Stack.back().GetUInt32();
+			m_Stack.pop_back();
 			uint64 typeSize = GetTypeSize(memberType);
 			offset = typeSize * index + offset;
 		}
@@ -454,7 +498,7 @@ void Program::ExecuteOpCode(OpCode opcode)
 
 		void* memberAddress = (uint8*)variable->data + offset;
 
-		if ((ValueType)memberType == ValueType::STRING || memberPointerLevel > 0)
+		if ((ValueType)memberType == ValueType::STRING || (memberPointerLevel > 0 && !indexArray))
 		{
 			// Field stores a pointer to the string data
 			member.data = *(void**)memberAddress;
@@ -466,6 +510,9 @@ void Program::ExecuteOpCode(OpCode opcode)
 		}
 
 		m_Stack.push_back(member);
+	} break;
+	case  OpCode::PUSH_THIS: {
+		m_Stack.push_back(m_ThisStack.back());
 	} break;
 	case OpCode::ADD: {
 		Value rhs = m_Stack.back(); m_Stack.pop_back();
@@ -491,11 +538,47 @@ void Program::ExecuteOpCode(OpCode opcode)
 		Value sum = lhs.Div(rhs, m_StackAllocator);
 		m_Stack.push_back(sum);
 	} break;
+	case OpCode::LESS: {
+		Value rhs = m_Stack.back(); m_Stack.pop_back();
+		Value lhs = m_Stack.back(); m_Stack.pop_back();
+		Value result = lhs.LessThan(rhs, m_StackAllocator);
+		m_Stack.push_back(result);
+	} break;
+	case OpCode::GREATER: {
+		Value rhs = m_Stack.back(); m_Stack.pop_back();
+		Value lhs = m_Stack.back(); m_Stack.pop_back();
+		Value result = lhs.GreaterThan(rhs, m_StackAllocator);
+		m_Stack.push_back(result);
+	} break;
+	case OpCode::LESS_EQUAL: {
+		Value rhs = m_Stack.back(); m_Stack.pop_back();
+		Value lhs = m_Stack.back(); m_Stack.pop_back();
+		Value result = lhs.LessThanOrEqual(rhs, m_StackAllocator);
+		m_Stack.push_back(result);
+	} break;
+	case OpCode::GREATER_EQUAL: {
+		Value rhs = m_Stack.back(); m_Stack.pop_back();
+		Value lhs = m_Stack.back(); m_Stack.pop_back();
+		Value result = lhs.GreaterThanOrEqual(rhs, m_StackAllocator);
+		m_Stack.push_back(result);
+	} break;
+	case OpCode::EQUALS: {
+		Value rhs = m_Stack.back(); m_Stack.pop_back();
+		Value lhs = m_Stack.back(); m_Stack.pop_back();
+		Value result = lhs.Equals(rhs, m_StackAllocator);
+		m_Stack.push_back(result);
+	} break;
+	case OpCode::NOT_EQUALS: {
+		Value rhs = m_Stack.back(); m_Stack.pop_back();
+		Value lhs = m_Stack.back(); m_Stack.pop_back();
+		Value result = lhs.NotEquals(rhs, m_StackAllocator);
+		m_Stack.push_back(result);
+	} break;
 	case OpCode::POP: {
 		m_Stack.pop_back();
 	} break;
 	case OpCode::DUP: {
-		Value dup = m_Stack.back();
+		Value dup = m_Stack.back().Clone(this, m_StackAllocator);
 		m_Stack.push_back(dup);
 	} break;
 	case OpCode::SWAP: {
@@ -822,9 +905,11 @@ void Program::ExecuteOpCode(OpCode opcode)
 		uint16 type = ReadUInt16();
 		uint64 typeSize = ReadUInt64();
 		uint8 memberPointerLevel = ReadUInt8();
-		uint32 index = ReadUInt32();
-		if (index > 0)
+		bool indexArray = ReadUInt8();
+		if (indexArray)
 		{
+			uint32 index = m_Stack.back().GetUInt32();
+			m_Stack.pop_back();
 			offset = typeSize * index + offset;
 		}
 
@@ -888,6 +973,39 @@ void Program::ExecuteOpCode(OpCode opcode)
 		Value& assignValue = m_Stack.back(); m_Stack.pop_back();
 
 		thisValue.AssignMember(offset, memberType, memberPointerLevel, memberTypeSize, assignValue);
+	} break;
+	case OpCode::UNARY_UPDATE: {
+		uint8 type = ReadUInt8();
+		bool pushToStack = ReadUInt8();
+		switch (type)
+		{
+		case 0: { //Pre-inc
+			Value value = m_Stack.back();
+			value.Increment();
+			if (!pushToStack)
+				m_Stack.pop_back();
+		} break;
+		case 1: { //Pre-dec
+			Value value = m_Stack.back();
+			value.Decrement();
+			if (!pushToStack)
+				m_Stack.pop_back();
+		} break;
+		case 2: { //Post-inc
+			Value value = m_Stack.back(); m_Stack.pop_back();
+			Value clone = pushToStack ? value.Clone(this, m_StackAllocator) : Value::MakeNULL();
+			value.Increment();
+			if (pushToStack)
+				m_Stack.push_back(clone);
+		} break;
+		case 3: { //Post-dec
+			Value value = m_Stack.back();
+			Value clone = pushToStack ? value.Clone(this, m_StackAllocator) : Value::MakeNULL();
+			value.Decrement();
+			if (pushToStack)
+				m_Stack.push_back(clone);
+		} break;
+		}
 	} break;
 	} 
 }
@@ -979,6 +1097,12 @@ void Program::WriteString(const std::string& str)
 {
 	WriteUInt32(static_cast<uint32>(str.size()));
 	m_Code.insert(m_Code.end(), str.begin(), str.end());
+}
+
+void Program::PatchUInt32(uint32 pos, uint32 value)
+{
+	uint8* bytes = reinterpret_cast<uint8*>(&value);
+	std::memcpy(&m_Code[pos], bytes, sizeof(uint32));
 }
 
 HeapAllocator* Program::GetHeapAllocator() const
