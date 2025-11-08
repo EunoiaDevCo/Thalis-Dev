@@ -2,6 +2,17 @@ Import IO;
 
 class Vec2
 {
+	public Vec2(real32 x, real32 y)
+	{
+		this.x = x;
+		this.y = y;
+	}
+
+	public ~Vec2()
+	{
+		IO.Println("Called ~Vec2()");
+	}
+
 	public void Print()
 	{
 		IO.Print("(");
@@ -25,15 +36,8 @@ class Main
 {
 	public static void Main()
 	{
-		uint32 counter = 0;
-		while(counter < 100)
-		{
-			for(uint32 i = 0; i < counter; i++)
-			{
-				IO.Println(i);
-			}
-
-			counter++;
-		}
+		Vec2* vec = new Vec2(10.0, 10.0);
+		vec.Print();
+		delete vec;
 	}
 };

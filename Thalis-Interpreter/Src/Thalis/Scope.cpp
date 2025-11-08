@@ -1,5 +1,6 @@
 #include "Scope.h"
 #include "Program.h"
+#include "Class.h"
 
 Scope::Scope(Scope* parent) :
 	m_Parent(parent)
@@ -70,15 +71,41 @@ TypeInfo Scope::GetVariableTypeInfo(ID variableID)
 	return it->second;
 }
 
+static void AddDestructorRecursive(Program* program, const Value& value, uint32 offset = 0)
+{
+	if (value.IsPrimitive() || value.IsPointer())
+		return;
+
+	Class* cls = program->GetClass(value.type);
+	if (!cls)
+		return;
+
+	program->AddPendingDestructor(value);
+
+	const std::vector<ClassField>& members = cls->GetMemberFields();
+	for (int32 i = (int32)members.size() - 1; i >= 0; i--)
+	{
+		const ClassField& field = members[i];
+
+		if (Value::IsPrimitiveType(field.type.type) || field.type.pointerLevel > 0)
+			continue;
+
+		Value member;
+		member.type = field.type.type;
+		member.pointerLevel = 0;
+		member.data = (uint8*)value.data + field.offset + offset;
+
+		AddDestructorRecursive(program, member, offset + field.offset);
+	}
+}
+
 void Scope::Clear(Program* program)
 {
-	HeapAllocator* halloc = program->GetHeapAllocator();
 	for (Value& value : m_Storage)
 	{
-		
+		AddDestructorRecursive(program, value);
 	}
 
 	m_VariableMap.clear();
 	m_Storage.clear();
-	m_Temps.clear();
 }

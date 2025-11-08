@@ -221,6 +221,20 @@ struct ASTExpressionNewArray : public ASTExpression
 	virtual TypeInfo GetTypeInfo(Program* program) override;
 };
 
+struct ASTExpressionNew : public ASTExpression
+{
+	uint16 type;
+	std::vector<ASTExpression*> argExprs;
+	uint16 functionID;
+
+	ASTExpressionNew(ID scope, uint16 type, const std::vector<ASTExpression*> argExprs) :
+		ASTExpression(scope), type(type), argExprs(argExprs), functionID(INVALID_ID) { }
+
+	virtual void EmitCode(Program* program) override;
+	virtual TypeInfo GetTypeInfo(Program* program) override;
+	virtual bool Resolve(Program* program) override;
+};
+
 struct ASTExpressionDeclareObject : public ASTExpression
 {
 	uint16 type;
@@ -378,6 +392,50 @@ struct ASTExpressionWhile : public ASTExpression
 
 	ASTExpressionWhile(ID scope, ID whileScope, ASTExpression* conditionExpr, const std::vector<ASTExpression*>& whileExprs) :
 		ASTExpression(scope), whileScope(whileScope), conditionExpr(conditionExpr), whileExprs(whileExprs) { }
+
+	virtual void EmitCode(Program* program) override;
+	virtual TypeInfo GetTypeInfo(Program* program) override;
+};
+
+struct ASTExpressionConstructorCall : public ASTExpression
+{
+	uint16 type;
+	uint16 functionID;
+	std::vector<ASTExpression*> argExprs;
+
+	ASTExpressionConstructorCall(ID scope, uint16 type, const std::vector<ASTExpression*>& argExprs) :
+		ASTExpression(scope), type(type), functionID(INVALID_ID), argExprs(argExprs) { }
+
+	virtual void EmitCode(Program* program) override;
+	virtual TypeInfo GetTypeInfo(Program* program) override;
+	virtual bool Resolve(Program* program) override;
+};
+
+struct ASTExpressionBreak : public ASTExpression
+{
+	ASTExpressionBreak(ID scope) :
+		ASTExpression(scope) { }
+
+	virtual void EmitCode(Program* program) override;
+	virtual TypeInfo GetTypeInfo(Program* program) override;
+};
+
+struct ASTExpressionContinue : public ASTExpression
+{
+	ASTExpressionContinue(ID scope) :
+		ASTExpression(scope) { }
+
+	virtual void EmitCode(Program* program) override;
+	virtual TypeInfo GetTypeInfo(Program* program) override;
+};
+
+struct ASTExpressionDelete : public ASTExpression
+{
+	ASTExpression* expr;
+	bool deleteArray;
+
+	ASTExpressionDelete(ID scope, ASTExpression* expr, bool deleteArray) :
+		ASTExpression(scope), expr(expr), deleteArray(deleteArray) { }
 
 	virtual void EmitCode(Program* program) override;
 	virtual TypeInfo GetTypeInfo(Program* program) override;

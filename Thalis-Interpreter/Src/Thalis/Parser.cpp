@@ -218,12 +218,12 @@ bool Parser::ParseFunction(Tokenizer* tokenizer, Class* cls, ID parentScope)
 
 	if (isConstructor)
 	{
-		function->returnInfo.type = m_Program->GetClassID(g_CurrentClassName); // constructors "return" the class
+		function->returnInfo.type = (uint16)ValueType::VOID_T;
 		function->name = g_CurrentClassName;
 	}
 	else if (isDestructor)
 	{
-		function->returnInfo.type = 0;
+		function->returnInfo.type = (uint16)ValueType::VOID_T;
 		function->name = "~" + g_CurrentClassName;
 	}
 	else
@@ -471,7 +471,7 @@ bool Parser::ParseStatement(Function* function, Tokenizer* tokenizer, ID current
 			{
 				std::vector<ASTExpression*> argExprs;
 				ParseArguments(tokenizer, currentScope, argExprs);
-				if (!tokenizer->Expect(TokenTypeT::SEMICOLON)) return false;
+				if (tokenizer->Expect(TokenTypeT::SEMICOLON)) return false;
 				ASTExpressionDeclareObject* declareObjectExpr = new ASTExpressionDeclareObject(currentScope, type, variableID, argExprs);
 				function->body.push_back(declareObjectExpr);
 				return true;
@@ -511,6 +511,36 @@ bool Parser::ParseStatement(Function* function, Tokenizer* tokenizer, ID current
 					return false;
 				}
 			}
+		}
+		else if (next.type == TokenTypeT::ASTERISK)
+		{
+			uint8 pointerLevel = ParsePointerLevel(tokenizer) + 1;//already consumed 1 '*'
+			uint16 type = m_Program->GetClassID(identifier);
+			Token nameToken;
+			if (tokenizer->Expect(TokenTypeT::IDENTIFIER, &nameToken))return false;
+			std::string name(nameToken.text, nameToken.length);
+			ID variableID = m_Program->GetScope(currentScope)->GetVariableID(name, true);
+
+			next = tokenizer->GetToken();
+			ASTExpression* assignExpr = nullptr;
+			if (next.type == TokenTypeT::SEMICOLON)
+			{
+				assignExpr = nullptr;
+			}
+			else if (next.type == TokenTypeT::EQUALS)
+			{
+				assignExpr = ParseExpression(tokenizer, currentScope);
+				if (tokenizer->Expect(TokenTypeT::SEMICOLON)) return false;
+			}
+			else
+			{
+				return false;
+			}
+
+			m_Program->GetScope(currentScope)->DeclareVariable(variableID, TypeInfo(type, pointerLevel));
+			ASTExpressionDeclarePointer* declarePointer = new ASTExpressionDeclarePointer(currentScope, variableID, type, pointerLevel, assignExpr);
+			function->body.push_back(declarePointer);
+			return true;
 		}
 		else
 		{
@@ -693,6 +723,39 @@ bool Parser::ParseStatement(Function* function, Tokenizer* tokenizer, ID current
 
 		ASTExpressionWhile* whileExpr = new ASTExpressionWhile(currentScope, bodyScope, conditionExpr, body);
 		function->body.push_back(whileExpr);
+		return true;
+	}
+	else if (t.type == TokenTypeT::BREAK)
+	{
+		if (tokenizer->Expect(TokenTypeT::SEMICOLON)) return false;
+		ASTExpressionBreak* breakExpr = new ASTExpressionBreak(currentScope);
+		function->body.push_back(breakExpr);
+		return true;
+	}
+	else if (t.type == TokenTypeT::CONTINUE)
+	{
+		if (tokenizer->Expect(TokenTypeT::SEMICOLON)) return false;
+		ASTExpressionContinue* continueExpr = new ASTExpressionContinue(currentScope);
+		function->body.push_back(continueExpr);
+		return true;
+	}
+	else if (t.type == TokenTypeT::DELETE_T)
+	{
+		Token peek = tokenizer->PeekToken();
+		bool deleteArray = false;
+		if (peek.type == TokenTypeT::OPEN_BRACKET)
+		{
+			tokenizer->Expect(TokenTypeT::OPEN_BRACKET);
+			if (tokenizer->Expect(TokenTypeT::CLOSE_BRACKET)) return false;
+			deleteArray = true;
+		}
+
+		ASTExpression* expr = ParseExpression(tokenizer, currentScope);
+
+		if (tokenizer->Expect(TokenTypeT::SEMICOLON)) return false;
+
+		ASTExpressionDelete* deleteExpr = new ASTExpressionDelete(currentScope, expr, deleteArray);
+		function->body.push_back(deleteExpr);
 		return true;
 	}
 	else if (t.type == TokenTypeT::UINT8)
@@ -1193,6 +1256,12 @@ ASTExpression* Parser::ParsePrimary(Tokenizer* tokenizer, ID currentScope)
 	else if (t.type == TokenTypeT::NEW)
 	{
 		Token typeToken = tokenizer->GetToken();
+		uint16 type = ParseType(typeToken);
+		if (type == INVALID_ID)
+		{
+			return nullptr;
+		}
+
 		uint8 pointerLevel = ParsePointerLevel(tokenizer);
 		Token peek = tokenizer->PeekToken();
 		if (peek.type == TokenTypeT::OPEN_BRACKET)
@@ -1201,35 +1270,20 @@ ASTExpression* Parser::ParsePrimary(Tokenizer* tokenizer, ID currentScope)
 			ASTExpression* sizeExpr = ParseExpression(tokenizer, currentScope);
 			tokenizer->Expect(TokenTypeT::CLOSE_BRACKET);
 
-			uint16 type = INVALID_ID;
-			switch (typeToken.type)
-			{
-			case TokenTypeT::UINT8: type = (uint16)ValueType::UINT8; break;
-			case TokenTypeT::UINT16: type = (uint16)ValueType::UINT16; break;
-			case TokenTypeT::UINT32: type = (uint16)ValueType::UINT32; break;
-			case TokenTypeT::UINT64: type = (uint16)ValueType::UINT64; break;
-			case TokenTypeT::INT8: type = (uint16)ValueType::INT8; break;
-			case TokenTypeT::INT16: type = (uint16)ValueType::INT16; break;
-			case TokenTypeT::INT32: type = (uint16)ValueType::INT32; break;
-			case TokenTypeT::INT64: type = (uint16)ValueType::INT64; break;
-			case TokenTypeT::REAL32: type = (uint16)ValueType::REAL32; break;
-			case TokenTypeT::REAL64: type = (uint16)ValueType::REAL64; break;
-			case TokenTypeT::CHAR: type = (uint16)ValueType::CHAR; break;
-			case TokenTypeT::BOOL: type = (uint16)ValueType::BOOL; break;
-			case TokenTypeT::STRING: type = (uint16)ValueType::STRING; break;
-			case TokenTypeT::IDENTIFIER: {
-				std::string typeName(typeToken.text, typeToken.length);
-				type = m_Program->GetClassID(typeName);
-			} break;
-			}
-
-			if (type == INVALID_ID)
-			{
-				return nullptr;
-			}
-
 			ASTExpressionNewArray* newArrayExpr = new ASTExpressionNewArray(currentScope, type, pointerLevel, sizeExpr);
 			return newArrayExpr;
+		}
+		else if(peek.type == TokenTypeT::OPEN_PAREN)
+		{
+			tokenizer->Expect(TokenTypeT::OPEN_PAREN);
+			std::vector<ASTExpression*> argExprs;
+			ParseArguments(tokenizer, currentScope, argExprs);
+			ASTExpressionNew* newExpr = new ASTExpressionNew(currentScope, type, argExprs);
+			return newExpr;
+		}
+		else
+		{
+			return nullptr;
 		}
 	}
 	else if (t.type == TokenTypeT::IDENTIFIER || t.type == TokenTypeT::THIS)
@@ -1244,10 +1298,17 @@ ASTExpression* Parser::ParsePrimary(Tokenizer* tokenizer, ID currentScope)
 
 		if (next.type == TokenTypeT::OPEN_PAREN) //Function call
 		{
-			std::string functionName(t.text, t.length);
-			ID classID = m_Program->GetClassID(g_CurrentClassName);
 			std::vector<ASTExpression*> argExprs;
 			ParseArguments(tokenizer, currentScope, argExprs);
+
+			std::string functionName(t.text, t.length);
+			ID classID = m_Program->GetClassID(g_CurrentClassName);
+			Class* constructorClass = m_Program->GetClassByName(functionName);
+			if (constructorClass)
+			{
+				ASTExpressionConstructorCall* constructorCall = new ASTExpressionConstructorCall(currentScope, m_Program->GetClassID(functionName), argExprs);
+				return constructorCall;
+			}
 
 			ASTExpressionStaticFunctionCall* functionCall = new ASTExpressionStaticFunctionCall(currentScope, classID, functionName, argExprs);
 			return functionCall;

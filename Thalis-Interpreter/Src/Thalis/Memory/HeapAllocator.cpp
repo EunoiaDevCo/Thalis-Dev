@@ -4,7 +4,7 @@
 void* HeapAllocator::AllocAligned(uint64 size, uint64 alignment)
 {
 	m_NumAllocs++;
-	return Memory::AlignedAlloc(size, alignment);
+	return malloc(size);
 }
 
 void* HeapAllocator::Alloc(uint64 size)
@@ -29,7 +29,7 @@ void HeapAllocator::Free(void* data)
 		return;
 
 	m_NumFrees++;
-	Memory::AlignedFree(data);
+	free(data);
 }
 
 uint64 HeapAllocator::GetNumAllocs() const

@@ -58,7 +58,8 @@ public:
 	Class(const std::string& name, ID scopeID) : 
 		m_NextFunctionID(0),
 		m_Name(name),
-		m_ScopeID(scopeID)
+		m_ScopeID(scopeID),
+		m_Destructor(nullptr)
 	{ }
 
 	inline void SetID(ID id) { m_ID = id; }
@@ -75,6 +76,8 @@ public:
 
 	inline Function* GetFunction(ID functionID) { return m_FunctionMap[functionID]; }
 	inline std::vector<FunctionParameter>& GetFunctionParameters(ID functionID) { return m_FunctionMap[functionID]->parameters; }
+	inline Function* GetDestructor() { return m_Destructor; }
+	inline const std::vector<ClassField>& GetMemberFields() const { return m_MemberFields; }
 
 	uint32 GetFunctionID(const std::string& name, const std::vector<ASTExpression*>& args);
 	Function* FindFunctionBySignature(const std::string& signature);
@@ -94,6 +97,8 @@ private:
 	std::unordered_map<std::string, uint32> m_FunctionDefinitionMap;
 	std::vector<Function*> m_FunctionMap; //FunctionID is the index
 	uint32 m_NextFunctionID;
+
+	Function* m_Destructor;
 
 	std::vector<ClassField> m_StaticFields;
 	std::vector<ClassField> m_MemberFields;

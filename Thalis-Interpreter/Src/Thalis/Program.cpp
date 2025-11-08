@@ -9,7 +9,8 @@
 static Program* g_CompiledProgram;
 
 Program::Program() :
-	m_ProgramCounter(0)
+	m_ProgramCounter(0),
+	m_PendingDelete(nullptr)
 {
 	m_Stack.reserve(2048);
 	m_HeapAllocator = new HeapAllocator();
@@ -31,11 +32,51 @@ void Program::ExecuteProgram(uint32 pc)
 	while (opcode != OpCode::END)
 	{
 		ExecuteOpCode(opcode);
+		ExecutePendingDestructors();
+
 		opcode = ReadOPCode();
 	}
 
 	for (uint32 i = 0; i < m_StringLiterals.size(); i++)
 		m_HeapAllocator->Free(m_StringLiterals[i]);
+}
+
+void Program::ExecutePendingDestructors()
+{
+	while (!m_PendingDestructors.empty())
+	{
+		const Value& object = m_PendingDestructors.back();
+		m_PendingDestructors.pop_back();
+		Function* destructor = GetClass(object.type)->GetDestructor();
+		if (!destructor)
+			continue;
+
+		m_ThisStack.push_back(object);
+
+		CallFrame frame;
+		frame.returnPC = m_ProgramCounter; // after this instruction
+		frame.basePointer = (uint32)m_Stack.size(); // current stack top before call
+		frame.marker = m_StackAllocator->GetMarker();
+		frame.functionScope = destructor->scope;
+		frame.usesReturnValue = false;
+		frame.popThisStack = true;
+		m_CallStack.push_back(frame);
+
+		m_ProgramCounter = destructor->pc;
+
+		while (m_ProgramCounter != frame.returnPC)
+		{
+			OpCode innerOpCode = ReadOPCode();
+			if (innerOpCode == OpCode::END) break;
+			ExecuteOpCode(innerOpCode);
+		}
+	}
+
+	if (m_PendingDelete)
+	{
+		m_HeapAllocator->Free(m_PendingDelete);
+		m_PendingDelete = nullptr;
+	}
 }
 
 void Program::AddJumpCommand(uint32 pc)
@@ -314,6 +355,34 @@ void Program::AddUnaryUpdateCommand(uint8 type, bool pushResultToStack)
 	WriteUInt8(pushResultToStack);
 }
 
+void Program::AddConstructorCallCommand(uint16 type, uint16 functionID)
+{
+	WriteOPCode(OpCode::CONSTRUCTOR_CALL);
+	WriteUInt16(type);
+	WriteUInt16(functionID);
+}
+
+uint32 Program::AddPushLoopCommand()
+{
+	WriteOPCode(OpCode::PUSH_LOOP);
+	uint32 pos = GetCodeSize();
+	WriteUInt32(0);//Patch later
+	WriteUInt32(0);//Patch later
+	return pos;
+}
+
+void Program::AddPopLoopCommand()
+{
+	WriteOPCode(OpCode::POP_LOOP);
+}
+
+void Program::AddNewCommand(uint16 type, uint16 functionID)
+{
+	WriteOPCode(OpCode::NEW);
+	WriteUInt16(type);
+	WriteUInt16(functionID);
+}
+
 uint32 Program::GetCodeSize() const
 {
 	return m_Code.size();
@@ -391,6 +460,17 @@ void Program::InitStatics()
 	}
 }
 
+Class* Program::GetClassByName(const std::string& name)
+{
+	for (auto&& it : m_Classes)
+	{
+		if (it.second->GetName() == name)
+			return it.second;
+	}
+
+	return nullptr;
+}
+
 void Program::CleanUpForExecution()
 {
 	for (uint32 i = 0; i < m_CreatedExpressions.size(); i++)
@@ -400,6 +480,34 @@ void Program::CleanUpForExecution()
 	}
 
 	m_CreatedExpressions.reserve(0);
+}
+
+void Program::AddDestructorRecursive(const Value& value, uint32 offset)
+{
+	if (value.IsPrimitive() || value.IsPointer())
+		return;
+
+	Class* cls = GetClass(value.type);
+	if (!cls)
+		return;
+
+	AddPendingDestructor(value);
+
+	const std::vector<ClassField>& members = cls->GetMemberFields();
+	for (int32 i = (int32)members.size() - 1; i >= 0; i--)
+	{
+		const ClassField& field = members[i];
+
+		if (Value::IsPrimitiveType(field.type.type) || field.type.pointerLevel > 0)
+			continue;
+
+		Value member;
+		member.type = field.type.type;
+		member.pointerLevel = 0;
+		member.data = (uint8*)value.data + field.offset + offset;
+
+		AddDestructorRecursive(member, offset + field.offset);
+	}
 }
 
 void Program::ExecuteOpCode(OpCode opcode)
@@ -422,11 +530,38 @@ void Program::ExecuteOpCode(OpCode opcode)
 		m_ScopeStack.push_back(std::make_pair(scope, marker));
 	} break;
 	case OpCode::POP_SCOPE: {
-		std::pair<ID, uint64> scope = m_ScopeStack.back();
+		const std::pair<ID, uint64>& scope = m_ScopeStack.back();
 		m_ScopeStack.pop_back();
 		if(scope.first != INVALID_ID)
 			GetScope(scope.first)->Clear(this);
 		m_StackAllocator->FreeToMarker(scope.second);
+	} break;
+	case OpCode::PUSH_LOOP: {
+		LoopFrame loop;
+		loop.startPC = ReadUInt32();
+		loop.endPC = ReadUInt32();
+		m_LoopStack.push_back(loop);
+	} break;
+	case OpCode::POP_LOOP: {
+		m_LoopStack.pop_back();
+	} break;
+	case OpCode::BREAK: {
+		const LoopFrame& loop = m_LoopStack.back();//gets popped elsewhere(next command will be POP_LOOP)
+		const std::pair<ID, uint64>& scope = m_ScopeStack.back();
+		m_ScopeStack.pop_back();
+		if (scope.first != INVALID_ID)
+			GetScope(scope.first)->Clear(this);
+		m_StackAllocator->FreeToMarker(scope.second);
+		m_ProgramCounter = loop.endPC;
+	} break;
+	case OpCode::CONTINUE: {
+		const LoopFrame& loop = m_LoopStack.back();
+		const std::pair<ID, uint64>& scope = m_ScopeStack.back();
+		m_ScopeStack.pop_back();
+		if (scope.first != INVALID_ID)
+			GetScope(scope.first)->Clear(this);
+		m_StackAllocator->FreeToMarker(scope.second);
+		m_ProgramCounter = loop.startPC;
 	} break;
 	case OpCode::PUSH_UINT8: {
 		m_Stack.push_back(Value::MakeUInt8(ReadUInt8(), m_StackAllocator));
@@ -466,14 +601,15 @@ void Program::ExecuteOpCode(OpCode opcode)
 	} break;
 	case OpCode::PUSH_STRING: {
 		ID scopeID = ReadUInt32();
-		Value string = Value::MakeString(ReadString(), m_HeapAllocator);
+		Value string = Value::MakeString(ReadString(), m_StackAllocator);
 		m_Stack.push_back(string);
-		m_StringLiterals.push_back(string.data);
+		//m_StringLiterals.push_back(string.data);
 		//GetScope(scopeID)->AddTemp(m_Stack.back());
 	} break;
 	case OpCode::PUSH_VARIABLE: {
 		ID scopeID = ReadUInt32();
 		ID variableID = ReadUInt32();
+		Scope* scope = GetScope(scopeID);
 		m_Stack.push_back(*GetScope(scopeID)->GetVariable(variableID));
 	} break;
 	case OpCode::PUSH_MEMBER: {
@@ -611,6 +747,18 @@ void Program::ExecuteOpCode(OpCode opcode)
 		Class* cls = GetClass(classID);
 		Function* function = cls->GetFunction(functionID);
 
+		Scope* scope = GetScope(function->scope);
+		for (int32 i = function->parameters.size() - 1; i >= 0 ; i--)
+		{
+			const FunctionParameter& param = function->parameters[i];
+			Value arg = m_Stack.back().Clone(this, m_StackAllocator);
+			m_Stack.pop_back();
+			if (arg.type != param.type.type)
+				arg = arg.CastTo(this, param.type.type, param.type.pointerLevel, m_StackAllocator);
+
+			scope->AddVariable(param.variableID, arg);
+		}
+
 		// Save current frame
 		CallFrame frame;
 		frame.returnPC = m_ProgramCounter; // after this instruction
@@ -620,18 +768,6 @@ void Program::ExecuteOpCode(OpCode opcode)
 		frame.usesReturnValue = usesReturnValue;
 		frame.popThisStack = false;
 		m_CallStack.push_back(frame);
-
-		Scope* scope = GetScope(function->scope);
-		for (int32 i = function->parameters.size() - 1; i >= 0 ; i--)
-		{
-			const FunctionParameter& param = function->parameters[i];
-			Value arg = m_Stack.back();
-			m_Stack.pop_back();
-			if (arg.type != param.type.type)
-				arg = arg.CastTo(this, param.type.type, param.type.pointerLevel, m_StackAllocator);
-
-			scope->AddVariable(param.variableID, arg);
-		}
 
 		// Jump to function bytecode
 		uint32 functionPC = function->pc;
@@ -648,6 +784,18 @@ void Program::ExecuteOpCode(OpCode opcode)
 		Value objToCallFunctionOn = m_Stack.back(); m_Stack.pop_back();
 		m_ThisStack.push_back(objToCallFunctionOn);
 
+		Scope* scope = GetScope(function->scope);
+		for (int32 i = function->parameters.size() - 1; i >= 0; i--)
+		{
+			const FunctionParameter& param = function->parameters[i];
+			Value arg = m_Stack.back().Clone(this, m_StackAllocator);
+			m_Stack.pop_back();
+			if (arg.type != param.type.type)
+				arg = arg.CastTo(this, param.type.type, param.type.pointerLevel, m_StackAllocator);
+
+			scope->AddVariable(param.variableID, arg);
+		}
+
 		CallFrame frame;
 		frame.returnPC = m_ProgramCounter; // after this instruction
 		frame.basePointer = (uint32)m_Stack.size(); // current stack top before call
@@ -657,11 +805,24 @@ void Program::ExecuteOpCode(OpCode opcode)
 		frame.popThisStack = true;
 		m_CallStack.push_back(frame);
 
+		// Jump to function bytecode
+		uint32 functionPC = function->pc;
+		m_ProgramCounter = functionPC;
+	} break;
+	case OpCode::CONSTRUCTOR_CALL: {
+		uint16 type = ReadUInt16();
+		uint16 functionID = ReadUInt16();
+
+		Value object = Value::MakeObject(this, type, m_StackAllocator);
+		Function* function = GetClass(type)->GetFunction(functionID);
+
+		m_ThisStack.push_back(object);
+
 		Scope* scope = GetScope(function->scope);
 		for (int32 i = function->parameters.size() - 1; i >= 0; i--)
 		{
 			const FunctionParameter& param = function->parameters[i];
-			Value arg = m_Stack.back();
+			Value arg = m_Stack.back().Clone(this, m_StackAllocator);
 			m_Stack.pop_back();
 			if (arg.type != param.type.type)
 				arg = arg.CastTo(this, param.type.type, param.type.pointerLevel, m_StackAllocator);
@@ -669,9 +830,17 @@ void Program::ExecuteOpCode(OpCode opcode)
 			scope->AddVariable(param.variableID, arg);
 		}
 
-		// Jump to function bytecode
-		uint32 functionPC = function->pc;
-		m_ProgramCounter = functionPC;
+		m_Stack.push_back(object);
+
+		CallFrame frame;
+		frame.returnPC = m_ProgramCounter; // after this instruction
+		frame.basePointer = (uint32)m_Stack.size(); // current stack top before call
+		frame.marker = m_StackAllocator->GetMarker();
+		frame.functionScope = function->scope;
+		frame.usesReturnValue = false;
+		m_CallStack.push_back(frame);
+
+		m_ProgramCounter = function->pc;
 	} break;
 	case OpCode::RETURN: {
 		bool hasReturnValue = ReadUInt8();
@@ -862,7 +1031,31 @@ void Program::ExecuteOpCode(OpCode opcode)
 		Value object = Value::MakeObject(this, type, m_StackAllocator);
 		if (functionID != INVALID_ID)
 		{
-			//TODO: Call constructor
+			Function* function = GetClass(type)->GetFunction(functionID);
+			CallFrame frame;
+			frame.returnPC = m_ProgramCounter; // after this instruction
+			frame.basePointer = (uint32)m_Stack.size(); // current stack top before call
+			frame.marker = m_StackAllocator->GetMarker();
+			frame.functionScope = function->scope;
+			frame.usesReturnValue = false;
+			frame.popThisStack = true;
+
+			m_ThisStack.push_back(object);
+
+			m_CallStack.push_back(frame);
+			m_ProgramCounter = function->pc;
+
+			Scope* scope = GetScope(function->scope);
+			for (int32 i = function->parameters.size() - 1; i >= 0; i--)
+			{
+				const FunctionParameter& param = function->parameters[i];
+				Value arg = m_Stack.back().Clone(this, m_StackAllocator);
+				m_Stack.pop_back();
+				if (arg.type != param.type.type)
+					arg = arg.CastTo(this, param.type.type, param.type.pointerLevel, m_StackAllocator);
+
+				scope->AddVariable(param.variableID, arg);
+			}
 		}
 
 		GetScope(scopeID)->AddVariable(variableID, object);
@@ -909,6 +1102,7 @@ void Program::ExecuteOpCode(OpCode opcode)
 		if (indexArray)
 		{
 			uint32 index = m_Stack.back().GetUInt32();
+			memberPointerLevel = 0;
 			m_Stack.pop_back();
 			offset = typeSize * index + offset;
 		}
@@ -957,10 +1151,13 @@ void Program::ExecuteOpCode(OpCode opcode)
 		uint16 memberType = ReadUInt16();
 		uint8 memberPointerLevel = ReadUInt8();
 		Value& thisValue = m_ThisStack.back();
-		Value member;
+		Value member; //HERE
 		member.type = memberType;
 		member.pointerLevel = memberPointerLevel;
-		member.data = (uint8*)thisValue.data + offset;
+		if(memberPointerLevel > 0)
+			member.data = *(void**)((uint8*)thisValue.data + offset);
+		else
+			member.data = (uint8*)thisValue.data + offset;
 
 		m_Stack.push_back(member);
 	} break;
@@ -1005,6 +1202,74 @@ void Program::ExecuteOpCode(OpCode opcode)
 			if (pushToStack)
 				m_Stack.push_back(clone);
 		} break;
+		}
+	} break;
+	case OpCode::DELETE: {
+		Value value = m_Stack.back();
+		m_Stack.pop_back();
+		AddDestructorRecursive(value);
+		m_PendingDelete = value.data;
+	} break;
+	case OpCode::DELETE_ARRAY: {
+		Value value = m_Stack.back();
+		m_Stack.pop_back();
+
+		ArrayHeader* arrayHeader = (ArrayHeader*)((uint8*)value.data - sizeof(ArrayHeader));
+		if (arrayHeader->elementPointerLevel == 0)
+		{
+			uint64 typeSize = GetTypeSize(value.type);
+			for (uint32 i = 0; i < arrayHeader->length; i++)
+			{
+				Value element;
+				element.type = value.type;
+				element.isArray = false;
+				element.pointerLevel = 0;
+				element.data = (uint8*)value.data + (typeSize * i);
+				AddDestructorRecursive(element);
+			}
+		}
+
+		m_PendingDelete = arrayHeader;
+	} break;
+	case OpCode::NEW: {
+		uint16 type = ReadUInt16();
+		uint16 functionID = ReadUInt16();
+		Value object = Value::MakeObject(this, type, m_HeapAllocator);
+		object.pointerLevel = 1;
+		if (functionID != INVALID_ID)
+		{
+			Function* function = GetClass(type)->GetFunction(functionID);
+			
+			m_ThisStack.push_back(object);
+
+			Scope* scope = GetScope(function->scope);
+			for (int32 i = function->parameters.size() - 1; i >= 0; i--)
+			{
+				const FunctionParameter& param = function->parameters[i];
+				Value arg = m_Stack.back().Clone(this, m_StackAllocator);
+				m_Stack.pop_back();
+				if (arg.type != param.type.type)
+					arg = arg.CastTo(this, param.type.type, param.type.pointerLevel, m_StackAllocator);
+
+				scope->AddVariable(param.variableID, arg);
+			}
+
+			m_Stack.push_back(object);
+
+			CallFrame frame;
+			frame.returnPC = m_ProgramCounter; // after this instruction
+			frame.basePointer = (uint32)m_Stack.size(); // current stack top before call
+			frame.marker = m_StackAllocator->GetMarker();
+			frame.functionScope = function->scope;
+			frame.usesReturnValue = false;
+			frame.popThisStack = true;
+			m_CallStack.push_back(frame);
+
+			m_ProgramCounter = function->pc;
+		}
+		else
+		{
+			m_Stack.push_back(object);
 		}
 	} break;
 	} 
@@ -1103,6 +1368,14 @@ void Program::PatchUInt32(uint32 pos, uint32 value)
 {
 	uint8* bytes = reinterpret_cast<uint8*>(&value);
 	std::memcpy(&m_Code[pos], bytes, sizeof(uint32));
+}
+
+void Program::PatchPushLoopCommand(uint32 pos, uint32 start, uint32 end)
+{
+	uint8* startBytes = reinterpret_cast<uint8*>(&start);
+	uint8* endBytes = reinterpret_cast<uint8*>(&end);
+	std::memcpy(&m_Code[pos], startBytes, sizeof(uint32));
+	std::memcpy(&m_Code[pos + sizeof(uint32)], endBytes, sizeof(uint32));
 }
 
 HeapAllocator* Program::GetHeapAllocator() const

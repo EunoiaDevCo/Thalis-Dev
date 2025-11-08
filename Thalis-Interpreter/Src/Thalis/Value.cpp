@@ -67,6 +67,7 @@ void Value::Assign(const Value& value)
 		if (vlength <= length)
 		{
 			strcpy(str, vstr);
+			*(uint32*)data = vlength;
 			return;
 		}
 
@@ -74,7 +75,6 @@ void Value::Assign(const Value& value)
 		allocator->Free(data);
 		data = allocator->AllocAligned(vlength + 1 + sizeof(uint32), alignof(uint32));
 		strcpy((char*)((uint8*)data + sizeof(uint32)), vstr);*/
-		
 		data = value.data;
 	} break;
 	default: {
@@ -130,6 +130,7 @@ Value Value::Clone(Program* program, Allocator* allocator)
 	Value value;
 	value.type = type;
 	value.pointerLevel = pointerLevel;
+	value.isArray = isArray;
 	if (IsPointer())
 	{
 		value.data = data;

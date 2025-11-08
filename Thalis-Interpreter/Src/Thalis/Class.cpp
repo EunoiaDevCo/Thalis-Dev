@@ -15,6 +15,11 @@ void Class::AddFunction(Function* function)
 		m_FunctionMap.push_back(function);
 		function->id = functionID;
 	}
+
+	if (function->name.find("~") != std::string::npos)
+	{
+		m_Destructor = function;
+	}
 }
 
 void Class::AddStaticField(Program* program, uint16 type, uint8 pointerLevel, uint32 arrayLength, uint64 size, const std::string& name, ASTExpression* initializeExpr)
@@ -159,7 +164,7 @@ uint32 Class::GetFunctionID(const std::string& name, const std::vector<ASTExpres
 		return bestID;
 
 	// No match found
-	return 0;
+	return INVALID_ID;
 }
 
 Function* Class::FindFunctionBySignature(const std::string& signature)

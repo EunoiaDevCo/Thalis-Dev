@@ -3,15 +3,10 @@
 #include "Class.h"
 #include "Memory/Memory.h"
 
-char* test()
-{
-	char* t = "Hello";
-	return t;
-}
-
 int main()
 {
-	char* meep = test();
+	uint32** array = new uint32*[100];
+	delete[] array;
 
 	Program program;
 	Parser parser(&program);

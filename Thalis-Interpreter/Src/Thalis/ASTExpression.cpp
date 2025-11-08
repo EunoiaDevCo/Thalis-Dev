@@ -291,6 +291,34 @@ TypeInfo ASTExpressionNewArray::GetTypeInfo(Program* program)
 	return TypeInfo(type, pointerLevel + 1);
 }
 
+void ASTExpressionNew::EmitCode(Program* program)
+{
+	if (isStatement) return;//TODO: Still call constructor but dont push value on stack
+
+	for (uint32 i = 0; i < argExprs.size(); i++)
+	{
+		argExprs[i]->EmitCode(program);
+	}
+
+	program->AddNewCommand(type, functionID);
+}
+
+TypeInfo ASTExpressionNew::GetTypeInfo(Program* program)
+{
+	return TypeInfo(type, 1);
+}
+
+bool ASTExpressionNew::Resolve(Program* program)
+{
+	if(!Value::IsPrimitiveType(type))
+	{
+		Class* cls = program->GetClass(type);
+		functionID = cls->GetFunctionID(cls->GetName(), argExprs);
+	}
+
+	return true;
+}
+
 void ASTExpressionDeclareObject::EmitCode(Program* program)
 {
 	for (uint32 i = 0; i < argExprs.size(); i++)
@@ -465,8 +493,8 @@ void ASTExpressionFor::EmitCode(Program* program)
 	if (declareExpr)
 		declareExpr->EmitCode(program);
 
+	uint32 pushLoopPos = program->AddPushLoopCommand();
 	uint32 conditionPos = program->GetCodeSize();
-
 	program->AddPushScopeCommand(forScope);
 
 	if (conditionExpr)
@@ -483,16 +511,19 @@ void ASTExpressionFor::EmitCode(Program* program)
 	for (uint32 i = 0; i < forExprs.size(); i++)
 		forExprs[i]->EmitCode(program);
 
+	program->AddPopScopeCommand();
+
+	uint32 incrPC = program->GetCodeSize();
 	if (incrExpr)
 		incrExpr->EmitCode(program);
 
-	program->AddPopScopeCommand();
-
 	program->WriteOPCode(OpCode::JUMP);
 	program->WriteUInt32(conditionPos);
-
 	uint32 loopEndPos = program->GetCodeSize();
+	program->AddPopLoopCommand();
+
 	program->PatchUInt32(jumpIfFalsePos, loopEndPos);
+	program->PatchPushLoopCommand(pushLoopPos, incrPC, loopEndPos);
 }
 
 TypeInfo ASTExpressionFor::GetTypeInfo(Program* program)
@@ -513,6 +544,7 @@ TypeInfo ASTExpressionUnaryUpdate::GetTypeInfo(Program* program)
 
 void ASTExpressionWhile::EmitCode(Program* program)
 {
+	uint32 pushLoopPos = program->AddPushLoopCommand();
 	uint32 conditionPos = program->GetCodeSize();
 	program->AddPushScopeCommand(whileScope);
 	conditionExpr->EmitCode(program);
@@ -527,8 +559,9 @@ void ASTExpressionWhile::EmitCode(Program* program)
 	program->AddPopScopeCommand();
 	program->WriteOPCode(OpCode::JUMP);
 	program->WriteUInt32(conditionPos);
-
 	uint32 loopEndPos = program->GetCodeSize();
+	program->AddPopLoopCommand();
+
 	program->PatchUInt32(jumpIfFalsePos, loopEndPos);
 }
 
@@ -536,3 +569,62 @@ TypeInfo ASTExpressionWhile::GetTypeInfo(Program* program)
 {
 	return TypeInfo(INVALID_ID, 0);
 }
+
+void ASTExpressionConstructorCall::EmitCode(Program* program)
+{
+	if (isStatement)
+		return;
+
+	for (uint32 i = 0; i < argExprs.size(); i++)
+		argExprs[i]->EmitCode(program);
+
+	program->AddConstructorCallCommand(type, functionID);
+}
+
+TypeInfo ASTExpressionConstructorCall::GetTypeInfo(Program* program)
+{
+	return TypeInfo(type, 0);
+}
+
+bool ASTExpressionConstructorCall::Resolve(Program* program)
+{
+	Class* cls = program->GetClass(type);
+	functionID = cls->GetFunctionID(cls->GetName(), argExprs);
+	return functionID != INVALID_ID;
+}
+
+void ASTExpressionBreak::EmitCode(Program* program)
+{
+	program->WriteOPCode(OpCode::BREAK);
+}
+
+TypeInfo ASTExpressionBreak::GetTypeInfo(Program* program)
+{
+	return TypeInfo(INVALID_ID, 0);
+}
+
+void ASTExpressionContinue::EmitCode(Program* program)
+{
+	program->WriteOPCode(OpCode::CONTINUE);
+}
+
+TypeInfo ASTExpressionContinue::GetTypeInfo(Program* program)
+{
+	return TypeInfo(INVALID_ID, 0);
+}
+
+void ASTExpressionDelete::EmitCode(Program* program)
+{
+	expr->EmitCode(program);
+	if (deleteArray)
+		program->WriteOPCode(OpCode::DELETE_ARRAY);
+	else
+		program->WriteOPCode(OpCode::DELETE);
+}
+
+TypeInfo ASTExpressionDelete::GetTypeInfo(Program* program)
+{
+	return TypeInfo(INVALID_ID, 0);
+}
+
+

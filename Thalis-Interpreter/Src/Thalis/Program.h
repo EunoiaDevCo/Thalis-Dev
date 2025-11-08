@@ -17,7 +17,8 @@ enum class OpCode : uint16
 	PUSH_CHAR, PUSH_BOOL, PUSH_STRING,
 	PUSH_VARIABLE, PUSH_MEMBER, PUSH_THIS,
 
-	PUSH_SCOPE, POP_SCOPE,
+	PUSH_SCOPE, POP_SCOPE, PUSH_LOOP, POP_LOOP,
+	BREAK, CONTINUE,
 
 	DECLARE_UINT8, DECLARE_UINT16, DECLARE_UINT32, DECLARE_UINT64,
 	DECLARE_INT8, DECLARE_INT16, DECLARE_INT32, DECLARE_INT64,
@@ -30,7 +31,8 @@ enum class OpCode : uint16
 	VARIABLE_SET, MEMBER_SET,
 	INDEX, INDEX_ASSIGN, DIRECT_MEMBER_ACCESS, DIRECT_MEMBER_ASSIGN,
 
-	NEW_ARRAY,
+	NEW, NEW_ARRAY,
+	DELETE, DELETE_ARRAY,
 
 	POP, DUP, SWAP,
 
@@ -40,6 +42,7 @@ enum class OpCode : uint16
 
 	MODULE_CONSTANT, RETURN,
 	MODULE_FUNCTION_CALL, STATIC_FUNCTION_CALL, MEMBER_FUNCTION_CALL,
+	CONSTRUCTOR_CALL,
 
 	END
 
@@ -53,6 +56,12 @@ struct CallFrame
 	ID functionScope;	  // Scope of the function to clear
 	bool usesReturnValue;
 	bool popThisStack;
+};
+
+struct LoopFrame
+{
+	uint32 startPC;
+	uint32 endPC;
 };
 
 class Class;
@@ -103,6 +112,10 @@ public:
 	void AddPushScopeCommand(ID scope);
 	void AddPopScopeCommand();
 	void AddUnaryUpdateCommand(uint8 type, bool pushResultToStack);
+	void AddConstructorCallCommand(uint16 type, uint16 functionID);
+	uint32 AddPushLoopCommand();
+	void AddPopLoopCommand();
+	void AddNewCommand(uint16 type, uint16 functionID);
 
 	uint32 GetCodeSize() const;
 	uint32 GetStackSize() const;
@@ -128,6 +141,7 @@ public:
 	void WriteString(const std::string& str);
 
 	void PatchUInt32(uint32 pos, uint32 value);
+	void PatchPushLoopCommand(uint32 pos, uint32 start, uint32 end);
 
 	HeapAllocator* GetHeapAllocator() const;
 	BumpAllocator* GetStackAllocator() const;
@@ -146,9 +160,15 @@ public:
 	void EmitCode();
 
 	void InitStatics();
+
+	Class* GetClassByName(const std::string& name);
+
+	inline void AddPendingDestructor(const Value& value) { m_PendingDestructors.push_back(value); }
 private:
+	void AddDestructorRecursive(const Value& value, uint32 offset = 0);
 	void CleanUpForExecution();
 	void ExecuteOpCode(OpCode opcode);
+	void ExecutePendingDestructors();
 	void ExecuteModuleFunctionCall(ID moduleID, uint16 function, bool usesReturnValue);
 	void ExecuteModuleConstant(ID moduleID, uint16 constant);
 
@@ -191,6 +211,10 @@ private:
 
 	std::vector<Value> m_ThisStack;
 	std::vector<std::pair<ID, uint64>> m_ScopeStack;
+	std::vector<LoopFrame> m_LoopStack;
+
+	std::vector<Value> m_PendingDestructors;
+	void* m_PendingDelete;
 
 	ID m_ClassWithMainFunction;
 };
