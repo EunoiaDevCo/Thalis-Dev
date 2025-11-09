@@ -5,6 +5,7 @@
 #include "TypeInfo.h"
 #include <vector>
 #include "ASTExpression.h"
+#include "Template.h"
 #include <unordered_map>
 
 enum class AccessModifier : uint32
@@ -16,6 +17,7 @@ struct FunctionParameter
 {
 	TypeInfo type;
 	ID variableID;
+	std::string templateTypeName;
 };
 
 struct Function
@@ -30,6 +32,7 @@ struct Function
 	std::vector<ASTExpression*> body;
 	uint32 id;
 	ID scope;
+	std::string returnTemplateTypeName;
 
 	std::string GenerateSignature() const;
 
@@ -44,6 +47,8 @@ struct ClassField
 	uint64 offset;
 	std::string name;
 	ASTExpression* initializeExpr;
+	std::string templateTypeName;
+	std::string arrayDimensionTemplateSize;
 };
 
 struct ClassStaticData
@@ -59,7 +64,8 @@ public:
 		m_NextFunctionID(0),
 		m_Name(name),
 		m_ScopeID(scopeID),
-		m_Destructor(nullptr)
+		m_Destructor(nullptr),
+		m_IsTemplateInstance(false)
 	{ }
 
 	inline void SetID(ID id) { m_ID = id; }
@@ -70,7 +76,7 @@ public:
 
 	void AddFunction(Function* function);
 	void AddStaticField(Program* program, uint16 type, uint8 pointerLevel, uint32 arrayLength, uint64 size, const std::string& name, ASTExpression* initializeExpr = nullptr);
-	void AddMemberField(uint16 type, uint8 pointerLevel, uint32 arrayLength, uint64 size, uint64 offset, const std::string& name);
+	void AddMemberField(uint16 type, uint8 pointerLevel, uint32 arrayLength, uint64 size, uint64 offset, const std::string& name, const std::string& templateTypeName);
 
 	ClassField GetMemberFieldByOffset(uint64 offset) const;
 
@@ -86,7 +92,21 @@ public:
 
 	void InitStatics(Program* program);
 
-	uint64 CalculateOffset(const std::vector<std::string>& members, TypeInfo* memberTypeInfo, uint32 currentMember = 0, uint64 currentOffset = 0);
+	uint64 CalculateOffset(const std::vector<std::string>& members, TypeInfo* memberTypeInfo, bool* isTemplated, uint32 currentMember = 0, uint64 currentOffset = 0);
+
+	inline bool IsTemplateClass() const { return m_TemplateDefinition.HasTemplate(); }
+	inline bool IsTemplateInstance() const { return m_IsTemplateInstance; }
+	inline void SetTemplateDefinition(const TemplateDefinition& definition) { m_TemplateDefinition = definition; }
+	inline const TemplateDefinition& GetTemplateDefinition() const { return m_TemplateDefinition; }
+
+	ID InstantiateTemplate(Program* program, const TemplateInstantiation& instantiation, ID generatedID = INVALID_ID);
+	ID AddInstantiationCommand(TemplateInstantiationCommand* command);
+	int32 InstantiateTemplateGetIndex(Program* program, const std::string& templateTypeName);
+private:
+	void ExecuteInstantiationCommands(Program* program, const TemplateInstantiation& instantiation);
+	uint32 ExecuteInstantiationCommand(Program* program, TemplateInstantiationCommand* command, const TemplateInstantiation& instantiation, ID generatedID);
+	Function* InstantiateTemplateInjectFunction(Program* program, Function* templatedFunction, ID templatedID, const std::string& templatedName, const TemplateInstantiation& instantiation, Class* templatedClass);
+	std::string GenerateTemplateClassName(Program* program, const std::string& className, const TemplateInstantiation& instantiation);
 private:
 	std::string m_Name;
 	ID m_ID;
@@ -103,5 +123,7 @@ private:
 	std::vector<ClassField> m_StaticFields;
 	std::vector<ClassField> m_MemberFields;
 
-	ClassStaticData m_StaticData;
+	TemplateDefinition m_TemplateDefinition;
+	bool m_IsTemplateInstance;
+	std::vector<std::pair<TemplateInstantiationCommand*, ID>> m_InstantiationCommands;
 };

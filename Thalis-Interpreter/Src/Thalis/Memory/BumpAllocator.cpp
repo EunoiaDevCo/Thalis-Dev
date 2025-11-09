@@ -67,5 +67,6 @@ uint64 BumpAllocator::GetMarker() const
 
 void BumpAllocator::FreeToMarker(uint64 marker)
 {
+    assert(marker <= m_Offset && "FreeToMarker(): marker beyond current offset!");
     m_Offset = marker;
 }

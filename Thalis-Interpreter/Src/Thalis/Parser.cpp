@@ -108,6 +108,57 @@ bool Parser::ParseClass(Tokenizer* tokenizer)
 	if (tokenizer->Expect(TokenTypeT::IDENTIFIER, &nameToken)) return false;
 	std::string className(nameToken.text, nameToken.length);
 
+	TemplateDefinition templateDefinition;
+	Token arrowToken = tokenizer->PeekToken();
+	while (arrowToken.type == TokenTypeT::ARROW)
+	{
+		tokenizer->Expect(TokenTypeT::ARROW);
+		Token classExtensionToken = tokenizer->GetToken();
+		if (classExtensionToken.type == TokenTypeT::TEMPLATE)
+		{
+			if (tokenizer->Expect(TokenTypeT::OPEN_BRACKET)) return false;
+			while (true)
+			{
+				TemplateParameter param;
+				Token templateTypeToken = tokenizer->GetToken();
+				if (templateTypeToken.type == TokenTypeT::CLASS)
+				{
+					Token templateTypeNameToken;
+					if (tokenizer->Expect(TokenTypeT::IDENTIFIER, &templateTypeNameToken)) return false;
+
+					std::string templateTypeName(templateTypeNameToken.text, templateTypeNameToken.length);
+					param.type = TemplateParameterType::TYPE;
+					param.name = templateTypeName;
+				}
+				else if (templateTypeToken.type == TokenTypeT::UINT32)
+				{
+					Token templateIntNameToken;
+					if (tokenizer->Expect(TokenTypeT::IDENTIFIER, &templateIntNameToken)) return false;
+
+					std::string templateIntName(templateIntNameToken.text, templateIntNameToken.length);
+					param.type = TemplateParameterType::INT;
+					param.name = templateIntName;
+				}
+				else
+				{
+					return false;
+				}
+
+				templateDefinition.parameters.push_back(param);
+
+				Token commaToken = tokenizer->GetToken();
+				if (commaToken.type == TokenTypeT::CLOSE_BRACKET)
+					break;
+			}
+		}
+		else if (classExtensionToken.type == TokenTypeT::INHERIT)
+		{
+
+		}
+
+		arrowToken = tokenizer->PeekToken();
+	}
+
 	Token openBrace;
 	if (tokenizer->Expect(TokenTypeT::OPEN_BRACE, &openBrace)) return false;
 
@@ -116,6 +167,7 @@ bool Parser::ParseClass(Tokenizer* tokenizer)
 	Class* cls = new Class(className, classScope);
 	g_CurrentClassName = className;
 	m_Program->AddClass(className, cls);
+	cls->SetTemplateDefinition(templateDefinition);
 
 	//------------------------------------------------------------
 	// Pass 1: Parse all class variables (fields + static)
@@ -237,8 +289,21 @@ bool Parser::ParseFunction(Tokenizer* tokenizer, Class* cls, ID parentScope)
 		function->returnInfo.type = ParseType(t);
 		if (function->returnInfo.type == INVALID_ID)
 		{
-			delete function;
-			return false;
+			if (!cls->IsTemplateClass())
+			{
+				delete function;
+				return false;
+			}
+
+			std::string templateTypeName(t.text, t.length);
+			if (cls->InstantiateTemplateGetIndex(m_Program, templateTypeName) == -1)
+			{
+				delete function;
+				return false;
+			}
+
+			function->returnInfo.type = (uint16)ValueType::TEMPLATE_TYPE;
+			function->returnTemplateTypeName = templateTypeName;
 		}
 
 		uint8 pointerLevel = ParsePointerLevel(tokenizer);
@@ -286,12 +351,26 @@ bool Parser::ParseFunction(Tokenizer* tokenizer, Class* cls, ID parentScope)
 		param.type.type = ParseType(typeToken);
 		param.type.pointerLevel = ParsePointerLevel(tokenizer);
 
+		std::string templateTypeName = "";
+		if (param.type.type == INVALID_ID)
+		{
+			if (!cls->IsTemplateClass())
+				return false;
+
+			templateTypeName = std::string(typeToken.text, typeToken.length);
+			if (cls->InstantiateTemplateGetIndex(m_Program, templateTypeName) == -1)
+				return false;
+
+			param.type.type = (uint16)ValueType::TEMPLATE_TYPE;
+			param.templateTypeName = templateTypeName;
+		}
+
 		t = tokenizer->GetToken();
 		if (t.type != TokenTypeT::IDENTIFIER) { delete function; return false; }
 
 		std::string paramName(t.text, t.length);
 		param.variableID = m_Program->GetScope(functionScope)->GetVariableID(paramName, true);
-		m_Program->GetScope(functionScope)->DeclareVariable(param.variableID, param.type);
+		m_Program->GetScope(functionScope)->DeclareVariable(param.variableID, param.type, templateTypeName);
 
 		function->parameters.push_back(param);
 
@@ -356,12 +435,47 @@ bool Parser::ParseClassVariable(Tokenizer* tokenizer, Class* cls, ID parentScope
 	Token typeToken = tokenizer->GetToken();
 	std::string typeName(typeToken.text, typeToken.length);
 	uint16 type = ParseType(typeToken);
+	std::string templateTypeName = "";
 	if (type == INVALID_ID)
 	{
-		return false;
-	}
-	uint64 typeSize = m_Program->GetTypeSize(type);
+		bool foundTemplateType = false;
+		const TemplateDefinition& definition = cls->GetTemplateDefinition();
+		for (uint32 i = 0; i < definition.parameters.size(); i++)
+		{
+			if (definition.parameters[i].type == TemplateParameterType::TYPE &&
+				definition.parameters[i].name == typeName)
+			{
+				templateTypeName = typeName;
+				foundTemplateType = true;
+				break;
+			}
+		}
 
+		if (!foundTemplateType) return false;
+		type = (uint16)ValueType::TEMPLATE_TYPE;
+	}
+
+	Token openAngle = tokenizer->PeekToken();
+	if (openAngle.type == TokenTypeT::LESS)
+	{
+		tokenizer->Expect(TokenTypeT::LESS);
+		bool templatedType = false;
+		TemplateInstantiationCommand* command = new TemplateInstantiationCommand();
+		TemplateInstantiation instantiation = ParseTemplateInstantiation(tokenizer, m_Program->GetClass(type), command, &templatedType);
+		command->type = m_Program->GetClassID(typeName);
+
+		if (!templatedType)
+		{
+			Class* baseClass = m_Program->GetClass(type);
+			type = baseClass->InstantiateTemplate(m_Program, instantiation);
+		}
+		else
+		{
+			type = m_Program->GetClass(m_Program->GetClassID(g_CurrentClassName))->AddInstantiationCommand(command);
+		}
+	}
+
+	uint64 typeSize = m_Program->GetTypeSize(type);
 	uint8 pointerLevel = ParsePointerLevel(tokenizer);
 
 	if (pointerLevel > 0) typeSize = sizeof(void*);
@@ -396,7 +510,7 @@ bool Parser::ParseClassVariable(Tokenizer* tokenizer, Class* cls, ID parentScope
 	}
 	else
 	{
-		cls->AddMemberField(type, pointerLevel, arrayLength, typeSize, *offset, name);
+		cls->AddMemberField(type, pointerLevel, arrayLength, typeSize, *offset, name, templateTypeName);
 		*offset += typeSize;
 	}
 }
@@ -540,6 +654,48 @@ bool Parser::ParseStatement(Function* function, Tokenizer* tokenizer, ID current
 			m_Program->GetScope(currentScope)->DeclareVariable(variableID, TypeInfo(type, pointerLevel));
 			ASTExpressionDeclarePointer* declarePointer = new ASTExpressionDeclarePointer(currentScope, variableID, type, pointerLevel, assignExpr);
 			function->body.push_back(declarePointer);
+			return true;
+		}
+		else if (next.type == TokenTypeT::LESS)
+		{
+			TemplateInstantiationCommand* command = new TemplateInstantiationCommand();
+			bool templatedType = false;
+			TemplateInstantiation instantiation = ParseTemplateInstantiation(tokenizer, m_Program->GetClass(m_Program->GetClassID(identifier)), command, &templatedType);
+			command->type = m_Program->GetClassID(identifier);
+			ID classID = INVALID_ID;
+			if (!templatedType)
+			{
+				ID baseClassID = m_Program->GetClassID(identifier);
+				Class* baseClass = m_Program->GetClass(baseClassID);
+				// Instantiate the template type (compile-time class creation)
+				classID = baseClass->InstantiateTemplate(m_Program, instantiation);
+				delete command;
+			}
+			else
+			{
+				classID = m_Program->GetClass(m_Program->GetClassID(g_CurrentClassName))->AddInstantiationCommand(command);
+			}
+
+			Token nameTok = tokenizer->GetToken(); // variable name
+			std::string varName(nameTok.text, nameTok.length);
+
+			Token openParen = tokenizer->PeekToken();
+			std::vector<ASTExpression*> args;
+			if (openParen.type == TokenTypeT::OPEN_PAREN)
+			{
+				tokenizer->Expect(TokenTypeT::OPEN_PAREN);
+				ParseArguments(tokenizer, currentScope, args);
+			}
+
+			if (tokenizer->Expect(TokenTypeT::SEMICOLON)) return false;
+
+			Scope* scope = m_Program->GetScope(currentScope);
+			ID variableID = scope->GetVariableID(varName);
+
+			scope->DeclareVariable(variableID, TypeInfo(classID, 0));
+
+			ASTExpressionDeclareObject* declareObjectExpr = new ASTExpressionDeclareObject(currentScope, classID, variableID, args);
+			function->body.push_back(declareObjectExpr);
 			return true;
 		}
 		else
@@ -1257,12 +1413,31 @@ ASTExpression* Parser::ParsePrimary(Tokenizer* tokenizer, ID currentScope)
 	{
 		Token typeToken = tokenizer->GetToken();
 		uint16 type = ParseType(typeToken);
+		uint8 pointerLevel = ParsePointerLevel(tokenizer);
+
+		std::string templateTypeName = "";
 		if (type == INVALID_ID)
 		{
-			return nullptr;
+			Class* cls = m_Program->GetClass(m_Program->GetClassID(g_CurrentClassName));
+			if (!cls->IsTemplateClass())
+				return nullptr;
+
+			templateTypeName = std::string(typeToken.text, typeToken.length);
+			const TemplateDefinition& definition = cls->GetTemplateDefinition();
+			bool foundParam = false;
+			for (uint32 i = 0; i < definition.parameters.size(); i++)
+			{
+				if (templateTypeName == definition.parameters[i].name)
+				{
+					foundParam = true;
+					break;
+				}
+			}
+
+			if (!foundParam) return nullptr;
+			type = (uint16)ValueType::TEMPLATE_TYPE;
 		}
 
-		uint8 pointerLevel = ParsePointerLevel(tokenizer);
 		Token peek = tokenizer->PeekToken();
 		if (peek.type == TokenTypeT::OPEN_BRACKET)
 		{
@@ -1271,6 +1446,7 @@ ASTExpression* Parser::ParsePrimary(Tokenizer* tokenizer, ID currentScope)
 			tokenizer->Expect(TokenTypeT::CLOSE_BRACKET);
 
 			ASTExpressionNewArray* newArrayExpr = new ASTExpressionNewArray(currentScope, type, pointerLevel, sizeExpr);
+			newArrayExpr->templateTypeName = templateTypeName;
 			return newArrayExpr;
 		}
 		else if(peek.type == TokenTypeT::OPEN_PAREN)
@@ -1279,6 +1455,7 @@ ASTExpression* Parser::ParsePrimary(Tokenizer* tokenizer, ID currentScope)
 			std::vector<ASTExpression*> argExprs;
 			ParseArguments(tokenizer, currentScope, argExprs);
 			ASTExpressionNew* newExpr = new ASTExpressionNew(currentScope, type, argExprs);
+			newExpr->templateTypeName = templateTypeName;
 			return newExpr;
 		}
 		else
@@ -1415,7 +1592,8 @@ ASTExpression* Parser::ParsePrimary(Tokenizer* tokenizer, ID currentScope)
 							members.erase(members.begin());
 						}
 
-						uint64 offset = m_Program->GetClass(thisID)->CalculateOffset(members, &memberTypeInfo);
+						bool templatedType = false;
+						uint64 offset = m_Program->GetClass(thisID)->CalculateOffset(members, &memberTypeInfo, &templatedType);
 						if (offset == UINT64_MAX) return nullptr;
 
 						Token equals = tokenizer->PeekToken();
@@ -1424,18 +1602,24 @@ ASTExpression* Parser::ParsePrimary(Tokenizer* tokenizer, ID currentScope)
 							tokenizer->Expect(TokenTypeT::EQUALS);
 							ASTExpression* assignExpr = ParseExpression(tokenizer, currentScope);
 							ASTExpressionDirectMemberAccess* memberAccessExpr = new ASTExpressionDirectMemberAccess(currentScope, memberTypeInfo, offset, assignExpr);
+							if (templatedType)
+								memberAccessExpr->members = members;
 							return memberAccessExpr;
 						}
 						else
 						{
 							ASTExpressionDirectMemberAccess* memberAccessExpr = new ASTExpressionDirectMemberAccess(currentScope, memberTypeInfo, offset, nullptr);
+							if (templatedType)
+								memberAccessExpr->members = members;
 							return memberAccessExpr;
 						}
 					}
 
 					TypeInfo variableTypeInfo = scope->GetVariableTypeInfo(variableID);
 					TypeInfo memberTypeInfo;
-					uint64 offset = m_Program->GetClass(variableTypeInfo.type)->CalculateOffset(members, &memberTypeInfo);
+					bool templatedType = false;
+					uint64 offset = m_Program->GetClass(variableTypeInfo.type)->CalculateOffset(members, &memberTypeInfo, &templatedType);
+					if (templatedType) return nullptr;
 
 					Token equals = tokenizer->PeekToken();
 					if (equals.type == TokenTypeT::EQUALS)
@@ -1475,14 +1659,18 @@ ASTExpression* Parser::ParsePrimary(Tokenizer* tokenizer, ID currentScope)
 							ParseArguments(tokenizer, currentScope, argExprs);
 							std::string functionName = updatedMembers.back();
 							updatedMembers.pop_back();
-							offset = m_Program->GetClass(variableTypeInfo.type)->CalculateOffset(updatedMembers, &memberTypeInfo);
+							bool templatedType = false;
+							offset = m_Program->GetClass(variableTypeInfo.type)->CalculateOffset(updatedMembers, &memberTypeInfo, &templatedType);
+							if (templatedType) return nullptr;
 							ASTExpressionMemberAccess* memberAccessExpr = new ASTExpressionMemberAccess(currentScope, variableID, offset, memberTypeInfo.type, memberTypeInfo.pointerLevel, indexExpr);
 							ASTExpressionMemberFunctionCall* memberFunctionCall = new ASTExpressionMemberFunctionCall(currentScope, memberAccessExpr, functionName, argExprs);
 							return memberFunctionCall;
 						}
 						else if (peek.type == TokenTypeT::EQUALS)
 						{
-							offset = m_Program->GetClass(variableTypeInfo.type)->CalculateOffset(updatedMembers, &memberTypeInfo);
+							bool templatedType = false;
+							offset = m_Program->GetClass(variableTypeInfo.type)->CalculateOffset(updatedMembers, &memberTypeInfo, &templatedType);
+							if (templatedType) return nullptr;
 							tokenizer->Expect(TokenTypeT::EQUALS);
 							ASTExpression* assignExpr = ParseExpression(tokenizer, currentScope);
 							ASTExpressionMemberSet* memberSetExpr = new ASTExpressionMemberSet(currentScope, variableID, offset, memberTypeInfo.type, memberTypeInfo.pointerLevel, assignExpr, indexExpr);
@@ -1490,7 +1678,9 @@ ASTExpression* Parser::ParsePrimary(Tokenizer* tokenizer, ID currentScope)
 						}
 						else
 						{
-							offset = m_Program->GetClass(variableTypeInfo.type)->CalculateOffset(updatedMembers, &memberTypeInfo);
+							bool templatedType = false;
+							offset = m_Program->GetClass(variableTypeInfo.type)->CalculateOffset(updatedMembers, &memberTypeInfo, &templatedType);
+							if (templatedType) return nullptr;
 							ASTExpressionMemberAccess* memberAccessExpr = new ASTExpressionMemberAccess(currentScope, variableID, offset, memberTypeInfo.type, memberTypeInfo.pointerLevel, indexExpr);
 							return memberAccessExpr;
 						}
@@ -1536,9 +1726,13 @@ ASTExpression* Parser::ParsePrimary(Tokenizer* tokenizer, ID currentScope)
 					{
 						TypeInfo memberTypeInfo;
 						members.push_back(variableName);
-						uint64 offset = m_Program->GetClass(m_Program->GetClassID(g_CurrentClassName))->CalculateOffset(members, &memberTypeInfo);
+						bool templatedType = false;
+						uint64 offset = m_Program->GetClass(m_Program->GetClassID(g_CurrentClassName))->CalculateOffset(members, &memberTypeInfo, &templatedType);
 						if (offset == UINT64_MAX) return nullptr;
 						objExpr = new ASTExpressionDirectMemberAccess(currentScope, memberTypeInfo, offset, nullptr);
+						if (templatedType)
+							((ASTExpressionDirectMemberAccess*)objExpr)->members = members;
+
 						if (indexExpr != nullptr)
 						{
 							objExpr = new ASTExpressionIndex(currentScope, objExpr, indexExpr, nullptr);
@@ -1561,9 +1755,12 @@ ASTExpression* Parser::ParsePrimary(Tokenizer* tokenizer, ID currentScope)
 					{
 						TypeInfo memberTypeInfo;
 						members.insert(members.begin(), variableName);
-						uint64 offset = m_Program->GetClass(m_Program->GetClassID(g_CurrentClassName))->CalculateOffset(members, &memberTypeInfo);
+						bool templatedType = false;
+						uint64 offset = m_Program->GetClass(m_Program->GetClassID(g_CurrentClassName))->CalculateOffset(members, &memberTypeInfo, &templatedType);
 						if (offset == UINT64_MAX) return nullptr;
 						objExpr = new ASTExpressionDirectMemberAccess(currentScope, memberTypeInfo, offset, nullptr);
+						if(templatedType)
+							((ASTExpressionDirectMemberAccess*)objExpr)->members = members;
 						if(indexExpr)
 							objExpr = new ASTExpressionIndex(currentScope, objExpr, indexExpr, nullptr);
 					}
@@ -1571,7 +1768,9 @@ ASTExpression* Parser::ParsePrimary(Tokenizer* tokenizer, ID currentScope)
 					{
 						TypeInfo variableTypeInfo = m_Program->GetScope(currentScope)->GetVariableTypeInfo(variableID);
 						TypeInfo memberTypeInfo;
-						uint64 offset = m_Program->GetClass(variableTypeInfo.type)->CalculateOffset(members, &memberTypeInfo);
+						bool templatedType = false;
+						uint64 offset = m_Program->GetClass(variableTypeInfo.type)->CalculateOffset(members, &memberTypeInfo, &templatedType);
+						if (templatedType) return nullptr;
 						if (offset == UINT64_MAX) return nullptr;
 						objExpr = new ASTExpressionMemberAccess(currentScope, variableID, offset, memberTypeInfo.type, memberTypeInfo.pointerLevel, indexExpr);
 					}
@@ -1593,8 +1792,11 @@ ASTExpression* Parser::ParsePrimary(Tokenizer* tokenizer, ID currentScope)
 				std::vector<std::string> members;
 				members.push_back(variableName);
 				TypeInfo memberTypeInfo;
-				uint64 offset = thisClass->CalculateOffset(members, &memberTypeInfo);
+				bool templatedType = false;
+				uint64 offset = thisClass->CalculateOffset(members, &memberTypeInfo, &templatedType);
 				ASTExpressionDirectMemberAccess* directMemberAccessExpr = new ASTExpressionDirectMemberAccess(currentScope, memberTypeInfo, offset, assignExpr);
+				if (templatedType)
+					directMemberAccessExpr->members = members;
 				return directMemberAccessExpr;
 			}
 			else
@@ -1656,7 +1858,9 @@ ASTExpression* Parser::ParsePrimary(Tokenizer* tokenizer, ID currentScope)
 					{
 						uint64 variableType = m_Program->GetScope(currentScope)->GetVariableTypeInfo(variableID).type;
 						TypeInfo memberTypeInfo;
-						uint64 offset = m_Program->GetClass(variableType)->CalculateOffset(identifiers, &memberTypeInfo);
+						bool templatedType = false;
+						uint64 offset = m_Program->GetClass(variableType)->CalculateOffset(identifiers, &memberTypeInfo, &templatedType);
+						if (templatedType) return nullptr;
 						objExpr = new ASTExpressionMemberAccess(currentScope, variableID, offset, memberTypeInfo.type, memberTypeInfo.pointerLevel, indexExpr);
 					}
 
@@ -1668,7 +1872,9 @@ ASTExpression* Parser::ParsePrimary(Tokenizer* tokenizer, ID currentScope)
 				ID variableID = m_Program->GetScope(currentScope)->GetVariableID(variableName, false);
 				uint64 variableType = m_Program->GetScope(currentScope)->GetVariableTypeInfo(variableID).type;
 				TypeInfo memberTypeInfo;
-				uint64 offset = m_Program->GetClass(variableType)->CalculateOffset(identifiers, &memberTypeInfo);
+				bool templatedType = false;
+				uint64 offset = m_Program->GetClass(variableType)->CalculateOffset(identifiers, &memberTypeInfo, &templatedType);
+				if (templatedType) return nullptr;
 
 				if (assignExpr)
 				{
@@ -1686,7 +1892,19 @@ ASTExpression* Parser::ParsePrimary(Tokenizer* tokenizer, ID currentScope)
 			ID variableID = m_Program->GetScope(currentScope)->GetVariableID(variableName, false);
 			if (variableID == INVALID_ID)
 			{
-				return nullptr;
+				Class* cls = m_Program->GetClass(m_Program->GetClassID(g_CurrentClassName));
+				TypeInfo memberTypeInfo;
+				bool templatedType;
+				std::vector<std::string> members;
+				members.push_back(variableName);
+				uint64 offset = cls->CalculateOffset(members, &memberTypeInfo, &templatedType);
+				if (offset == UINT64_MAX) return nullptr;
+
+				ASTExpressionDirectMemberAccess* memberAccessExpr = new ASTExpressionDirectMemberAccess(currentScope, memberTypeInfo, offset, nullptr);
+				if (templatedType)
+					memberAccessExpr->members = members;
+				ASTExpressionIndex* indexExpr_ = new ASTExpressionIndex(currentScope, memberAccessExpr, indexExpr, assignExpr);
+				return indexExpr_;
 			}
 			else
 			{
@@ -1706,11 +1924,14 @@ ASTExpression* Parser::ParsePrimary(Tokenizer* tokenizer, ID currentScope)
 				std::vector<std::string> members;
 				members.push_back(variableName);
 				TypeInfo memberTypeInfo;
-				uint64 offset = thisClass->CalculateOffset(members, &memberTypeInfo);
+				bool templatedType = false;
+				uint64 offset = thisClass->CalculateOffset(members, &memberTypeInfo, &templatedType);
 				if (offset == UINT64_MAX) return nullptr;
 
 				tokenizer->at = next.text; // rewind, it's a variable
 				ASTExpressionDirectMemberAccess* directMemberAccessExpr = new ASTExpressionDirectMemberAccess(currentScope, memberTypeInfo, offset, nullptr);
+				if (templatedType)
+					directMemberAccessExpr->members = members;
 				return directMemberAccessExpr;
 			}
 			else
@@ -1767,4 +1988,167 @@ void Parser::ParseArrayInitializer(Tokenizer* tokenizer, ID currentScope, std::v
 		if (token.type == TokenTypeT::COMMA) continue;
 		if (token.type == TokenTypeT::CLOSE_BRACE) break;
 	}
+}
+
+TemplateInstantiation Parser::ParseTemplateInstantiation(Tokenizer* tokenizer, Class* parentClass, TemplateInstantiationCommand* command, bool* templatedType)
+{
+	TemplateInstantiation instantiation;
+	uint32 angleDepth = 1;
+
+	while (true)
+	{
+		Token t = tokenizer->PeekToken();
+		if (t.type == TokenTypeT::END)
+			break;
+
+		if (t.type == TokenTypeT::IDENTIFIER || Tokenizer::IsTokenPrimitiveType(t))
+		{
+			tokenizer->Expect(TokenTypeT::IDENTIFIER);
+			std::string typeName(t.text, t.length);
+			Token next = tokenizer->PeekToken();
+
+			if (next.type == TokenTypeT::LESS)
+			{
+				tokenizer->Expect(TokenTypeT::LESS);
+				TemplateInstantiationCommand* subCmd = new TemplateInstantiationCommand();
+				subCmd->type = m_Program->GetClassID(typeName);
+				TemplateInstantiation nested = ParseTemplateInstantiation(tokenizer, m_Program->GetClass(m_Program->GetTypeID(typeName)), subCmd, templatedType);
+
+				TemplateInstantiationCommandArg arg;
+				arg.type = 1;
+				arg.command = subCmd;
+				command->args.push_back(arg);
+
+				bool isTemplate = false;
+				for (uint32 i = 0; i < nested.args.size(); i++)
+				{
+					if (nested.args[i].value == (uint16)ValueType::TEMPLATE_TYPE)
+					{
+						isTemplate = true;
+						break;
+					}
+				}
+
+				if (!isTemplate)
+				{
+					TemplateArgument arg;
+					arg.type = TemplateParameterType::TYPE;
+					arg.value = AddTemplateInstantiationType(typeName, nested);
+					instantiation.args.push_back(arg);
+				}
+
+			}
+			else
+			{
+				uint8 pointerLevel = ParsePointerLevel(tokenizer);
+
+				const TemplateDefinition& definition = parentClass->GetTemplateDefinition();
+				TemplateParameterType paramType = TemplateParameterType::TYPE;
+				for (uint32 i = 0; i < definition.parameters.size(); i++)
+				{
+					if (definition.parameters[i].name == typeName)
+					{
+						paramType = definition.parameters[i].type;
+						break;
+					}
+				}
+
+				TemplateArgument arg;
+				arg.type = paramType;
+				arg.value = m_Program->GetTypeID(typeName);
+				arg.pointerLevel = pointerLevel;
+
+				if (arg.value == INVALID_ID)
+				{
+					if (arg.type != TemplateParameterType::INT)
+						arg.type = TemplateParameterType::TEMPLATE_TYPE;
+
+					arg.value = (uint16)ValueType::TEMPLATE_TYPE;
+					arg.templateTypeName = typeName;
+					*templatedType = true;
+				}
+
+				TemplateInstantiationCommandArg cmdArg;
+				cmdArg.type = 0;
+				cmdArg.arg = arg;
+				command->args.push_back(cmdArg);
+
+				instantiation.args.push_back(arg);
+			}
+		}
+		else if (t.type == TokenTypeT::NUMBER_LITERAL)
+		{
+			tokenizer->Expect(TokenTypeT::NUMBER_LITERAL);
+			std::string numberString(t.text, t.length);
+			TemplateArgument arg;
+			arg.type = TemplateParameterType::INT;
+			arg.value = std::stol(numberString);
+			instantiation.args.push_back(arg);
+		}
+
+		t = tokenizer->PeekToken();
+
+		if (t.type == TokenTypeT::COMMA)
+		{
+			tokenizer->Expect(TokenTypeT::COMMA);
+			continue;
+		}
+		else if (t.type == TokenTypeT::GREATER)
+		{
+			tokenizer->Expect(TokenTypeT::GREATER);
+			break;
+		}
+		else
+		{
+			// Unexpected token -> syntax error
+			break;
+		}
+	}
+
+	return instantiation;
+}
+
+static bool IsPrimitiveTypeName(const std::string& name)
+{
+	static const std::unordered_set<std::string> primitiveNames = {
+		"uint8", "uint16", "uint32", "uint64",
+		"int8", "int16", "int32", "int64",
+		"real32", "real64", "bool", "char", "string", "void"
+	};
+	return primitiveNames.find(name) != primitiveNames.end();
+}
+
+static ValueType PrimitiveTypeFromName(const std::string& name)
+{
+	if (name == "uint8")   return ValueType::UINT8;
+	if (name == "uint16")  return ValueType::UINT16;
+	if (name == "uint32")  return ValueType::UINT32;
+	if (name == "uint64")  return ValueType::UINT64;
+	if (name == "int8")    return ValueType::INT8;
+	if (name == "int16")   return ValueType::INT16;
+	if (name == "int32")   return ValueType::INT32;
+	if (name == "int64")   return ValueType::INT64;
+	if (name == "real32")  return ValueType::REAL32;
+	if (name == "real64")  return ValueType::REAL64;
+	if (name == "bool")    return ValueType::BOOL;
+	if (name == "char")    return ValueType::CHAR;
+	if (name == "string")  return ValueType::STRING;
+	if (name == "void")    return ValueType::VOID_T;
+	return ValueType::LAST_TYPE;
+}
+
+uint32 Parser::AddTemplateInstantiationType(const std::string& baseName, const TemplateInstantiation& nested)
+{
+	if (IsPrimitiveTypeName(baseName))
+	{
+		ValueType type = PrimitiveTypeFromName(baseName);
+		return static_cast<uint32>(type);
+	}
+
+	ID id = m_Program->GetClassID(baseName);
+	if (id == INVALID_ID)
+		return INVALID_ID;
+
+	Class* cls = m_Program->GetClass(id);
+	return cls->InstantiateTemplate(m_Program, nested);
 }

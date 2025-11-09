@@ -36,17 +36,13 @@ void Program::ExecuteProgram(uint32 pc)
 
 		opcode = ReadOPCode();
 	}
-
-	for (uint32 i = 0; i < m_StringLiterals.size(); i++)
-		m_HeapAllocator->Free(m_StringLiterals[i]);
 }
 
-void Program::ExecutePendingDestructors()
+void Program::ExecutePendingDestructors(uint32 offset)
 {
-	while (!m_PendingDestructors.empty())
+	for (uint32 i = offset; i < m_PendingDestructors.size(); i++)
 	{
-		const Value& object = m_PendingDestructors.back();
-		m_PendingDestructors.pop_back();
+		const Value& object = m_PendingDestructors[i];
 		Function* destructor = GetClass(object.type)->GetDestructor();
 		if (!destructor)
 			continue;
@@ -60,7 +56,7 @@ void Program::ExecutePendingDestructors()
 		frame.functionScope = destructor->scope;
 		frame.usesReturnValue = false;
 		frame.popThisStack = true;
-		m_CallStack.push_back(frame);
+		PushCallStack(frame);
 
 		m_ProgramCounter = destructor->pc;
 
@@ -72,6 +68,7 @@ void Program::ExecutePendingDestructors()
 		}
 	}
 
+	m_PendingDestructors.resize(offset);
 	if (m_PendingDelete)
 	{
 		m_HeapAllocator->Free(m_PendingDelete);
@@ -411,6 +408,7 @@ uint64 Program::GetTypeSize(uint16 type)
 	case ValueType::BOOL:	return sizeof(bool);
 	case ValueType::STRING: return sizeof(char*);
 	case ValueType::VOID_T:	return 0;
+	case ValueType::TEMPLATE_TYPE: return 0;
 	}
 
 	return GetClass(type)->GetSize();
@@ -482,6 +480,11 @@ void Program::CleanUpForExecution()
 	m_CreatedExpressions.reserve(0);
 }
 
+void Program::PushCallStack(const CallFrame& frame)
+{
+	m_CallStack.push_back(frame);
+}
+
 void Program::AddDestructorRecursive(const Value& value, uint32 offset)
 {
 	if (value.IsPrimitive() || value.IsPointer())
@@ -490,8 +493,6 @@ void Program::AddDestructorRecursive(const Value& value, uint32 offset)
 	Class* cls = GetClass(value.type);
 	if (!cls)
 		return;
-
-	AddPendingDestructor(value);
 
 	const std::vector<ClassField>& members = cls->GetMemberFields();
 	for (int32 i = (int32)members.size() - 1; i >= 0; i--)
@@ -508,6 +509,8 @@ void Program::AddDestructorRecursive(const Value& value, uint32 offset)
 
 		AddDestructorRecursive(member, offset + field.offset);
 	}
+
+	AddPendingDestructor(value);
 }
 
 void Program::ExecuteOpCode(OpCode opcode)
@@ -532,8 +535,10 @@ void Program::ExecuteOpCode(OpCode opcode)
 	case OpCode::POP_SCOPE: {
 		const std::pair<ID, uint64>& scope = m_ScopeStack.back();
 		m_ScopeStack.pop_back();
+		uint32 count = m_PendingDestructors.size();
 		if(scope.first != INVALID_ID)
 			GetScope(scope.first)->Clear(this);
+		ExecutePendingDestructors(count);
 		m_StackAllocator->FreeToMarker(scope.second);
 	} break;
 	case OpCode::PUSH_LOOP: {
@@ -549,8 +554,11 @@ void Program::ExecuteOpCode(OpCode opcode)
 		const LoopFrame& loop = m_LoopStack.back();//gets popped elsewhere(next command will be POP_LOOP)
 		const std::pair<ID, uint64>& scope = m_ScopeStack.back();
 		m_ScopeStack.pop_back();
+		uint32 count = m_PendingDestructors.size();
 		if (scope.first != INVALID_ID)
 			GetScope(scope.first)->Clear(this);
+
+		ExecutePendingDestructors(count);
 		m_StackAllocator->FreeToMarker(scope.second);
 		m_ProgramCounter = loop.endPC;
 	} break;
@@ -558,8 +566,11 @@ void Program::ExecuteOpCode(OpCode opcode)
 		const LoopFrame& loop = m_LoopStack.back();
 		const std::pair<ID, uint64>& scope = m_ScopeStack.back();
 		m_ScopeStack.pop_back();
+		uint32 count = m_PendingDestructors.size();
 		if (scope.first != INVALID_ID)
 			GetScope(scope.first)->Clear(this);
+
+		ExecutePendingDestructors(count);
 		m_StackAllocator->FreeToMarker(scope.second);
 		m_ProgramCounter = loop.startPC;
 	} break;
@@ -767,7 +778,7 @@ void Program::ExecuteOpCode(OpCode opcode)
 		frame.functionScope = function->scope;
 		frame.usesReturnValue = usesReturnValue;
 		frame.popThisStack = false;
-		m_CallStack.push_back(frame);
+		PushCallStack(frame);
 
 		// Jump to function bytecode
 		uint32 functionPC = function->pc;
@@ -803,7 +814,7 @@ void Program::ExecuteOpCode(OpCode opcode)
 		frame.functionScope = function->scope;
 		frame.usesReturnValue = usesReturnValue;
 		frame.popThisStack = true;
-		m_CallStack.push_back(frame);
+		PushCallStack(frame);
 
 		// Jump to function bytecode
 		uint32 functionPC = function->pc;
@@ -838,7 +849,7 @@ void Program::ExecuteOpCode(OpCode opcode)
 		frame.marker = m_StackAllocator->GetMarker();
 		frame.functionScope = function->scope;
 		frame.usesReturnValue = false;
-		m_CallStack.push_back(frame);
+		PushCallStack(frame);
 
 		m_ProgramCounter = function->pc;
 	} break;
@@ -867,7 +878,10 @@ void Program::ExecuteOpCode(OpCode opcode)
 
 		m_Stack.resize(frame.basePointer);
 
+		uint32 count = m_PendingDestructors.size();
 		GetScope(frame.functionScope)->Clear(this);
+		ExecutePendingDestructors(count);
+
 		m_StackAllocator->FreeToMarker(frame.marker);
 
 		if (hasReturnValue && frame.usesReturnValue)
@@ -1042,7 +1056,7 @@ void Program::ExecuteOpCode(OpCode opcode)
 
 			m_ThisStack.push_back(object);
 
-			m_CallStack.push_back(frame);
+			PushCallStack(frame);
 			m_ProgramCounter = function->pc;
 
 			Scope* scope = GetScope(function->scope);
@@ -1150,14 +1164,17 @@ void Program::ExecuteOpCode(OpCode opcode)
 		uint64 offset = ReadUInt64();
 		uint16 memberType = ReadUInt16();
 		uint8 memberPointerLevel = ReadUInt8();
-		Value& thisValue = m_ThisStack.back();
+		Value thisValue = m_ThisStack.back();
 		Value member; //HERE
 		member.type = memberType;
 		member.pointerLevel = memberPointerLevel;
+		member.isArray = false;
 		if(memberPointerLevel > 0)
 			member.data = *(void**)((uint8*)thisValue.data + offset);
 		else
 			member.data = (uint8*)thisValue.data + offset;
+
+		
 
 		m_Stack.push_back(member);
 	} break;
@@ -1207,13 +1224,16 @@ void Program::ExecuteOpCode(OpCode opcode)
 	case OpCode::DELETE: {
 		Value value = m_Stack.back();
 		m_Stack.pop_back();
+		uint32 count = m_PendingDestructors.size();
 		AddDestructorRecursive(value);
 		m_PendingDelete = value.data;
+		ExecutePendingDestructors(count);
 	} break;
 	case OpCode::DELETE_ARRAY: {
 		Value value = m_Stack.back();
 		m_Stack.pop_back();
 
+		uint32 count = m_PendingDestructors.size();
 		ArrayHeader* arrayHeader = (ArrayHeader*)((uint8*)value.data - sizeof(ArrayHeader));
 		if (arrayHeader->elementPointerLevel == 0)
 		{
@@ -1230,6 +1250,7 @@ void Program::ExecuteOpCode(OpCode opcode)
 		}
 
 		m_PendingDelete = arrayHeader;
+		ExecutePendingDestructors(count);
 	} break;
 	case OpCode::NEW: {
 		uint16 type = ReadUInt16();
@@ -1263,7 +1284,7 @@ void Program::ExecuteOpCode(OpCode opcode)
 			frame.functionScope = function->scope;
 			frame.usesReturnValue = false;
 			frame.popThisStack = true;
-			m_CallStack.push_back(frame);
+			PushCallStack(frame);
 
 			m_ProgramCounter = function->pc;
 		}
@@ -1406,6 +1427,7 @@ std::string Program::GetTypeName(uint16 type)
 	case ValueType::REAL64:  return "real64";
 	case ValueType::VOID_T:	 return "void";
 	case ValueType::STRING:	 return "string";
+	case ValueType::TEMPLATE_TYPE: return "template_type";
 	default: return GetClass(type)->GetName();
 	}
 }
@@ -1507,12 +1529,13 @@ ID Program::GetModuleID(const std::string& name) const
 	return it->second;
 }
 
-void Program::AddClass(const std::string& name, Class* cls)
+ID Program::AddClass(const std::string& name, Class* cls, ID generatedID)
 {
-	ID classID = GenClassID();
+	ID classID = (generatedID == INVALID_ID) ? GenClassID() : generatedID;
 	cls->SetID(classID);
 	m_ClassNameMap[name] = classID;
 	m_Classes[classID] = cls;
+	return classID;
 }
 
 ID Program::GetClassID(const std::string& name) const
@@ -1526,6 +1549,33 @@ ID Program::GetClassID(const std::string& name) const
 Class* Program::GetClass(ID id)
 {
 	return m_Classes[id];
+}
+
+static ValueType PrimitiveTypeFromName(const std::string& name)
+{
+	if (name == "uint8")   return ValueType::UINT8;
+	if (name == "uint16")  return ValueType::UINT16;
+	if (name == "uint32")  return ValueType::UINT32;
+	if (name == "uint64")  return ValueType::UINT64;
+	if (name == "int8")    return ValueType::INT8;
+	if (name == "int16")   return ValueType::INT16;
+	if (name == "int32")   return ValueType::INT32;
+	if (name == "int64")   return ValueType::INT64;
+	if (name == "real32")  return ValueType::REAL32;
+	if (name == "real64")  return ValueType::REAL64;
+	if (name == "bool")    return ValueType::BOOL;
+	if (name == "char")    return ValueType::CHAR;
+	if (name == "string")  return ValueType::STRING;
+	if (name == "void")    return ValueType::VOID_T;
+	return ValueType::LAST_TYPE;
+}
+
+uint16 Program::GetTypeID(const std::string& name) const
+{
+	ValueType primitiveType = PrimitiveTypeFromName(name);
+	if (primitiveType != ValueType::LAST_TYPE) return (uint16)primitiveType;
+
+	return GetClassID(name);
 }
 
 Program* Program::GetCompiledProgram()

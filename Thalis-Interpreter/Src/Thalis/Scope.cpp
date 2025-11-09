@@ -5,14 +5,19 @@
 Scope::Scope(Scope* parent) :
 	m_Parent(parent)
 {
-	m_Storage.reserve(64);
+	
 }
 
 void Scope::AddVariable(ID variableID, const Value& value)
 {
-	uint32 index = m_Storage.size();
 	m_Storage.push_back(value);
+	uint32 index = static_cast<uint32>(m_Storage.size() - 1);
 	m_VariableMap[variableID] = index;
+}
+
+void Scope::AddVariableTest(ID variableID, const Value& value)
+{
+	uint32 index = m_Storage.size();
 }
 
 Value* Scope::GetVariable(ID variableID)
@@ -54,9 +59,9 @@ ID Scope::GetVariableID(const std::string& name, bool makeID)
 	}
 }
 
-void Scope::DeclareVariable(ID variableID, const TypeInfo& typeInfo)
+void Scope::DeclareVariable(ID variableID, const TypeInfo& typeInfo, const std::string& templateTypeName)
 {
-	m_VariableTypes[variableID] = typeInfo;
+	m_VariableTypes[variableID] = std::make_pair(typeInfo, templateTypeName);
 }
 
 TypeInfo Scope::GetVariableTypeInfo(ID variableID)
@@ -68,7 +73,7 @@ TypeInfo Scope::GetVariableTypeInfo(ID variableID)
 	}
 
 	if (it == m_VariableTypes.end()) return TypeInfo(INVALID_ID, 0);
-	return it->second;
+	return it->second.first;
 }
 
 static void AddDestructorRecursive(Program* program, const Value& value, uint32 offset = 0)
@@ -79,8 +84,6 @@ static void AddDestructorRecursive(Program* program, const Value& value, uint32 
 	Class* cls = program->GetClass(value.type);
 	if (!cls)
 		return;
-
-	program->AddPendingDestructor(value);
 
 	const std::vector<ClassField>& members = cls->GetMemberFields();
 	for (int32 i = (int32)members.size() - 1; i >= 0; i--)
@@ -97,6 +100,8 @@ static void AddDestructorRecursive(Program* program, const Value& value, uint32 
 
 		AddDestructorRecursive(program, member, offset + field.offset);
 	}
+
+	program->AddPendingDestructor(value);
 }
 
 void Scope::Clear(Program* program)

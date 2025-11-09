@@ -2,6 +2,7 @@
 
 #include "Tokenizer.h"
 #include "ID.h"
+#include"Template.h"
 #include <string>
 #include <vector>
 
@@ -31,6 +32,8 @@ private:
 	void ParseArguments(Tokenizer* tokenizer, ID currentScope, std::vector<ASTExpression*>& args);
 	uint32 ParseArrayLength(Tokenizer* tokenizer);
 	void ParseArrayInitializer(Tokenizer* tokenizer, ID currentScope, std::vector<ASTExpression*>& initializeExprs);
+	TemplateInstantiation ParseTemplateInstantiation(Tokenizer* tokenizer, Class* cls, TemplateInstantiationCommand* command, bool* templatedType);
+	uint32 AddTemplateInstantiationType(const std::string& baseName, const TemplateInstantiation& nested);
 private:
 	Program* m_Program;
 };

@@ -13,15 +13,6 @@ class Vec2
 		IO.Println("~Vec2()");
 	}
 
-	public void Print()
-	{
-		IO.Print("(");
-		IO.Print(x);
-		IO.Print(", ");
-		IO.Print(y);
-		IO.Println(")");
-	}
-
 	public real32 x;
 	public real32 y;
 };
@@ -36,7 +27,6 @@ class List -> template[class T]
 	public ~List()
 	{
 		delete[] m_Data;
-		IO.Println("Called ~List()");
 	}
 
 	public void Push(T element)
@@ -60,13 +50,6 @@ class Main
 	public static void Main()
 	{
 		List<Vec2> list;
-		list.Push(Vec2(10.0, 10.0));
-		list.Push(Vec2(20.0, 20.0));
-
-		Vec2 e0 = list.At(0);
-		Vec2 e1 = list.At(1);
-
-		e0.Print();
-		e1.Print();
+		
 	}
 };

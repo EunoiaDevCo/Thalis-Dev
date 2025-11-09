@@ -123,9 +123,10 @@ public:
 	void AddModule(const std::string& name, ID id);
 	ID GetModuleID(const std::string& name) const;
 
-	void AddClass(const std::string& name, Class* cls);
+	ID AddClass(const std::string& name, Class* cls, ID generatedID = INVALID_ID);
 	ID GetClassID(const std::string& name) const;
 	Class* GetClass(ID id);
+	uint16 GetTypeID(const std::string& name) const;
 
 	void WriteUInt64(uint64 value);
 	void WriteUInt32(uint32 value);
@@ -164,11 +165,12 @@ public:
 	Class* GetClassByName(const std::string& name);
 
 	inline void AddPendingDestructor(const Value& value) { m_PendingDestructors.push_back(value); }
+	void PushCallStack(const CallFrame& frame);
 private:
 	void AddDestructorRecursive(const Value& value, uint32 offset = 0);
 	void CleanUpForExecution();
 	void ExecuteOpCode(OpCode opcode);
-	void ExecutePendingDestructors();
+	void ExecutePendingDestructors(uint32 offset = 0);
 	void ExecuteModuleFunctionCall(ID moduleID, uint16 function, bool usesReturnValue);
 	void ExecuteModuleConstant(ID moduleID, uint16 constant);
 

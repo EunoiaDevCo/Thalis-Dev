@@ -29,6 +29,7 @@
     <ClInclude Include="Src\Thalis\Parser.h" />
     <ClInclude Include="Src\Thalis\Program.h" />
     <ClInclude Include="Src\Thalis\Scope.h" />
+    <ClInclude Include="Src\Thalis\Template.h" />
     <ClInclude Include="Src\Thalis\TypeInfo.h" />
     <ClInclude Include="Src\Thalis\Tokenizer.h" />
     <ClInclude Include="Src\Thalis\Value.h" />
@@ -51,6 +52,7 @@
   </ItemGroup>
   <ItemGroup>
     <None Include="Main.tls" />
+    <None Include="Test.tls" />
   </ItemGroup>
   <PropertyGroup Label="Globals">
     <ProjectGuid>{2BA9D34F-178D-94A5-80ED-8EF86CF07E27}</ProjectGuid>

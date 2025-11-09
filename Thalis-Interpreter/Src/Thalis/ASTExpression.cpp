@@ -48,6 +48,27 @@ void ASTExpressionLiteral::CleanUp(Program* program)
 		program->GetHeapAllocator()->Free(value.data);
 }
 
+ASTExpression* ASTExpressionLiteral::InjectTemplateType(Program* program, Class* cls, ID newScope, const TemplateInstantiation& instantiation, Class* templatedClass)
+{
+	Value v = value;
+	if (value.type == (uint16)ValueType::STRING)
+		v = value.Clone(program, program->GetHeapAllocator());
+
+	return new ASTExpressionLiteral(newScope, v);
+}
+
+TypeInfo ASTExpressionTemplateLiteral::GetTypeInfo(Program* program)
+{
+	return TypeInfo((uint16)ValueType::UINT32, 0);
+}
+
+ASTExpression* ASTExpressionTemplateLiteral::InjectTemplateType(Program* program, Class* cls, ID newScope, const TemplateInstantiation& instantiation, Class* templatedClass)
+{
+	uint32 index = cls->InstantiateTemplateGetIndex(program, literalName);
+	uint32 value = instantiation.args[index].value;
+	return new ASTExpressionLiteral(newScope, Value::MakeUInt32(value, program->GetStackAllocator()));
+}
+
 void ASTExpressionModuleFunctionCall::EmitCode(Program* program)
 {
 	for (uint32 i = 0; i < argExprs.size(); i++)
@@ -63,6 +84,15 @@ TypeInfo ASTExpressionModuleFunctionCall::GetTypeInfo(Program* program)
 	return Module::GetFunctionReturnInfo(moduleID, functionID);
 }
 
+ASTExpression* ASTExpressionModuleFunctionCall::InjectTemplateType(Program* program, Class* cls, ID newScope, const TemplateInstantiation& instantiation, Class* templatedClass)
+{
+	std::vector<ASTExpression*> injectedArgExprs;
+	for (uint32 i = 0; i < argExprs.size(); i++)
+		injectedArgExprs.push_back(argExprs[i]->InjectTemplateType(program, cls, newScope, instantiation, templatedClass));
+
+	return new ASTExpressionModuleFunctionCall(newScope, moduleID, functionID, injectedArgExprs);
+}
+
 void ASTExpressionModuleConstant::EmitCode(Program* program)
 {
 	if(!isStatement)
@@ -72,6 +102,11 @@ void ASTExpressionModuleConstant::EmitCode(Program* program)
 TypeInfo ASTExpressionModuleConstant::GetTypeInfo(Program* program)
 {
 	return Module::GetConstantTypeInfo(moduleID, constantID);
+}
+
+ASTExpression* ASTExpressionModuleConstant::InjectTemplateType(Program* program, Class* cls, ID newScope, const TemplateInstantiation& instantiation, Class* templatedClass)
+{
+	return new ASTExpressionModuleConstant(newScope, moduleID, constantID);
 }
 
 void ASTExpressionBinary::EmitCode(Program* program)
@@ -100,6 +135,14 @@ TypeInfo ASTExpressionBinary::GetTypeInfo(Program* program)
 	TypeInfo rightType = rhs->GetTypeInfo(program);
 	uint16 resultType = Value::PromoteType(leftType.type, rightType.type);
 	return TypeInfo(resultType, 0);
+}
+
+ASTExpression* ASTExpressionBinary::InjectTemplateType(Program* program, Class* cls, ID newScope, const TemplateInstantiation& instantiation, Class* templatedClass)
+{
+	ASTExpression* lhsInjected = lhs->InjectTemplateType(program, cls, newScope, instantiation, templatedClass);
+	ASTExpression* rhsInjected = rhs->InjectTemplateType(program, cls, newScope, instantiation, templatedClass);
+
+	return new ASTExpressionBinary(newScope, lhsInjected, rhsInjected, op);
 }
 
 void ASTExpressionDeclare::EmitCode(Program* program)
@@ -136,6 +179,25 @@ TypeInfo ASTExpressionDeclare::GetTypeInfo(Program* program)
 	return program->GetScope(scope)->GetVariableTypeInfo(variableID);
 }
 
+ASTExpression* ASTExpressionDeclare::InjectTemplateType(Program* program, Class* cls, ID newScope, const TemplateInstantiation& instantiation, Class* templatedClass)
+{
+	uint16 injectedType = type;
+	uint8 injectedPointerLevel = 0;
+	if (type == (uint16)ValueType::TEMPLATE_TYPE)
+	{
+		uint32 index = cls->InstantiateTemplateGetIndex(program, templateTypeName);
+		injectedType = instantiation.args[index].value;
+		injectedPointerLevel = instantiation.args[index].pointerLevel;
+	}
+
+	ASTExpression* injectedAssignExpr = assignExpr ? assignExpr->InjectTemplateType(program, cls, newScope, instantiation, templatedClass) : nullptr;
+
+	if (injectedPointerLevel == 0)
+		return new ASTExpressionDeclare(newScope, variableID, injectedType, injectedAssignExpr);
+	else
+		return new ASTExpressionDeclarePointer(newScope, variableID, injectedType, injectedPointerLevel, injectedAssignExpr);
+}
+
 void ASTExpressionVariable::EmitCode(Program* program)
 {
 	if(!isStatement)
@@ -145,6 +207,11 @@ void ASTExpressionVariable::EmitCode(Program* program)
 TypeInfo ASTExpressionVariable::GetTypeInfo(Program* program)
 {
 	return program->GetScope(scope)->GetVariableTypeInfo(variableID);
+}
+
+ASTExpression* ASTExpressionVariable::InjectTemplateType(Program* program, Class* cls, ID newScope, const TemplateInstantiation& instantiation, Class* templatedClass)
+{
+	return new ASTExpressionVariable(newScope, variableID);
 }
 
 void ASTExpressionDeclarePointer::EmitCode(Program* program)
@@ -160,6 +227,21 @@ void ASTExpressionDeclarePointer::EmitCode(Program* program)
 	}
 }
 
+ASTExpression* ASTExpressionDeclarePointer::InjectTemplateType(Program* program, Class* cls, ID newScope, const TemplateInstantiation& instantiation, Class* templatedClass)
+{
+	uint16 injectedType = type;
+	uint8 injectedPointerLevel = pointerLevel;
+	if (type == (uint16)ValueType::TEMPLATE_TYPE)
+	{
+		uint32 index = cls->InstantiateTemplateGetIndex(program, templateTypeName);
+		injectedType = instantiation.args[index].value;
+		injectedPointerLevel += instantiation.args[index].pointerLevel;
+	}
+
+	ASTExpression* injectedAssignExpr = assignExpr ? assignExpr->InjectTemplateType(program, cls, newScope, instantiation, templatedClass) : assignExpr;
+	return new ASTExpressionDeclarePointer(newScope, variableID, injectedType, injectedPointerLevel, injectedAssignExpr);
+}
+
 void ASTExpressionAddressOf::EmitCode(Program* program)
 {
 	expr->EmitCode(program);
@@ -170,6 +252,12 @@ TypeInfo ASTExpressionAddressOf::GetTypeInfo(Program* program)
 {
 	TypeInfo exprType = expr->GetTypeInfo(program);
 	return TypeInfo(exprType.type, exprType.pointerLevel + 1);
+}
+
+ASTExpression* ASTExpressionAddressOf::InjectTemplateType(Program* program, Class* cls, ID newScope, const TemplateInstantiation& instantiation, Class* templatedClass)
+{
+	ASTExpression* injectedExpr = expr->InjectTemplateType(program, cls, newScope, instantiation, templatedClass);
+	return new ASTExpressionAddressOf(newScope, injectedExpr);
 }
 
 void ASTExpressionDereference::EmitCode(Program* program)
@@ -184,6 +272,12 @@ TypeInfo ASTExpressionDereference::GetTypeInfo(Program* program)
 	return TypeInfo(exprType.type, exprType.pointerLevel - 1);
 }
 
+ASTExpression* ASTExpressionDereference::InjectTemplateType(Program* program, Class* cls, ID newScope, const TemplateInstantiation& instantiation, Class* templatedClass)
+{
+	ASTExpression* injectedExpr = expr->InjectTemplateType(program, cls, newScope, instantiation, templatedClass);
+	return new ASTExpressionDereference(newScope, injectedExpr);
+}
+
 void ASTExpressionVariableSet::EmitCode(Program* program)
 {
 	assignExpr->EmitCode(program);
@@ -193,6 +287,12 @@ void ASTExpressionVariableSet::EmitCode(Program* program)
 TypeInfo ASTExpressionVariableSet::GetTypeInfo(Program* program)
 {
 	return program->GetScope(scope)->GetVariableTypeInfo(variableID);
+}
+
+ASTExpression* ASTExpressionVariableSet::InjectTemplateType(Program* program, Class* cls, ID newScope, const TemplateInstantiation& instantiation, Class* templatedClass)
+{
+	ASTExpression* injectedAssignExpr = assignExpr->InjectTemplateType(program, cls, newScope, instantiation, templatedClass);
+	return new ASTExpressionVariableSet(newScope, variableID, injectedAssignExpr);
 }
 
 void ASTExpressionStaticFunctionCall::EmitCode(Program* program)
@@ -221,6 +321,15 @@ bool ASTExpressionStaticFunctionCall::Resolve(Program* program)
 	return functionID != INVALID_ID;
 }
 
+ASTExpression* ASTExpressionStaticFunctionCall::InjectTemplateType(Program* program, Class* cls, ID newScope, const TemplateInstantiation& instantiation, Class* templatedClass)
+{
+	std::vector<ASTExpression*> injectedArgs;
+	for (uint32 i = 0; i < argExprs.size(); i++)
+		injectedArgs.push_back(argExprs[i]->InjectTemplateType(program, cls, newScope, instantiation, templatedClass));
+
+	return new ASTExpressionStaticFunctionCall(newScope, classID, functionName, injectedArgs);
+}
+
 void ASTExpressionReturn::EmitCode(Program* program)
 {
 	bool returnsValue = false;
@@ -238,6 +347,12 @@ TypeInfo ASTExpressionReturn::GetTypeInfo(Program* program)
 	return expr->GetTypeInfo(program);
 }
 
+ASTExpression* ASTExpressionReturn::InjectTemplateType(Program* program, Class* cls, ID newScope, const TemplateInstantiation& instantiation, Class* templatedClass)
+{
+	ASTExpression* injectedExpr = expr->InjectTemplateType(program, cls, newScope, instantiation, templatedClass);
+	return new ASTExpressionReturn(newScope, injectedExpr);
+}
+
 void ASTExpressionStackArrayDeclare::EmitCode(Program* program)
 {
 	for (uint32 i = 0; i < initializeExprs.size(); i++)
@@ -251,6 +366,24 @@ void ASTExpressionStackArrayDeclare::EmitCode(Program* program)
 TypeInfo ASTExpressionStackArrayDeclare::GetTypeInfo(Program* program)
 {
 	return TypeInfo(type, 1);
+}
+
+ASTExpression* ASTExpressionStackArrayDeclare::InjectTemplateType(Program* program, Class* cls, ID newScope, const TemplateInstantiation& instantiation, Class* templatedClass)
+{
+	uint16 injectedType = type;
+	uint8 injectedPointerLevel = pointerLevel;
+	if (type == (uint16)ValueType::TEMPLATE_TYPE)
+	{
+		uint32 index = cls->InstantiateTemplateGetIndex(program, templateTypeName);
+		injectedType = instantiation.args[index].value;
+		injectedPointerLevel += instantiation.args[index].pointerLevel;
+	}
+
+	std::vector<ASTExpression*> injectedInitializeExprs;
+	for (uint32 i = 0; i < initializeExprs.size(); i++)
+		injectedInitializeExprs.push_back(initializeExprs[i]->InjectTemplateType(program, cls, newScope, instantiation, templatedClass));
+
+	return new ASTExpressionStackArrayDeclare(newScope, injectedType, injectedPointerLevel, variableID, length, injectedInitializeExprs);
 }
 
 void ASTExpressionIndex::EmitCode(Program* program)
@@ -280,6 +413,15 @@ TypeInfo ASTExpressionIndex::GetTypeInfo(Program* program)
 	return TypeInfo(exprTypeInfo.type, exprTypeInfo.elementPointerLevel);
 }
 
+ASTExpression* ASTExpressionIndex::InjectTemplateType(Program* program, Class* cls, ID newScope, const TemplateInstantiation& instantiation, Class* templatedClass)
+{
+	ASTExpression* injectedExpr = expr->InjectTemplateType(program, cls, newScope, instantiation, templatedClass);
+	ASTExpression* injectedIndexExpr = indexExpr->InjectTemplateType(program, cls, newScope, instantiation, templatedClass);
+	ASTExpression* injectedAssignExpr = assignExpr ? assignExpr->InjectTemplateType(program, cls, newScope, instantiation, templatedClass) : nullptr;
+
+	return new ASTExpressionIndex(newScope, injectedExpr, injectedIndexExpr, injectedAssignExpr);
+}
+
 void ASTExpressionNewArray::EmitCode(Program* program)
 {
 	sizeExpr->EmitCode(program);
@@ -289,6 +431,21 @@ void ASTExpressionNewArray::EmitCode(Program* program)
 TypeInfo ASTExpressionNewArray::GetTypeInfo(Program* program)
 {
 	return TypeInfo(type, pointerLevel + 1);
+}
+
+ASTExpression* ASTExpressionNewArray::InjectTemplateType(Program* program, Class* cls, ID newScope, const TemplateInstantiation& instantiation, Class* templatedClass)
+{
+	uint16 injectedType = type;
+	uint8 injectedPointerLevel = pointerLevel;
+	if (type == (uint16)ValueType::TEMPLATE_TYPE)
+	{
+		uint32 index = cls->InstantiateTemplateGetIndex(program, templateTypeName);
+		injectedType = instantiation.args[index].value;
+		injectedPointerLevel += instantiation.args[index].pointerLevel;
+	}
+
+	ASTExpression* injectedSizeExpr = sizeExpr->InjectTemplateType(program, cls, newScope, instantiation, templatedClass);
+	return new ASTExpressionNewArray(newScope, injectedType, injectedPointerLevel, injectedSizeExpr);
 }
 
 void ASTExpressionNew::EmitCode(Program* program)
@@ -319,6 +476,22 @@ bool ASTExpressionNew::Resolve(Program* program)
 	return true;
 }
 
+ASTExpression* ASTExpressionNew::InjectTemplateType(Program* program, Class* cls, ID newScope, const TemplateInstantiation& instantiation, Class* templatedClass)
+{
+	uint16 injectedType = type;
+	if (type == (uint16)ValueType::TEMPLATE_TYPE)
+	{
+		uint32 index = cls->InstantiateTemplateGetIndex(program, templateTypeName);
+		injectedType = instantiation.args[index].value;
+	}
+
+	std::vector<ASTExpression*> injectedArgExprs;
+	for (uint32 i = 0; i < argExprs.size(); i++)
+		injectedArgExprs.push_back(argExprs[i]->InjectTemplateType(program, cls, newScope, instantiation, templatedClass));
+
+	return new ASTExpressionNew(newScope, injectedType, injectedArgExprs);
+}
+
 void ASTExpressionDeclareObject::EmitCode(Program* program)
 {
 	for (uint32 i = 0; i < argExprs.size(); i++)
@@ -339,6 +512,27 @@ bool ASTExpressionDeclareObject::Resolve(Program* program)
 	return true;
 }
 
+ASTExpression* ASTExpressionDeclareObject::InjectTemplateType(Program* program, Class* cls, ID newScope, const TemplateInstantiation& instantiation, Class* templatedClass)
+{
+	uint16 injectedType = type;
+	uint8 injectedPointerLevel = 0;
+	if (type == (uint16)ValueType::TEMPLATE_TYPE)
+	{
+		uint32 index = cls->InstantiateTemplateGetIndex(program, templateTypeName);
+		injectedType = instantiation.args[index].value;
+		injectedPointerLevel = instantiation.args[index].pointerLevel;
+	}
+
+	if (injectedPointerLevel > 0)
+		return new ASTExpressionDeclarePointer(newScope, variableID, injectedType, injectedPointerLevel, nullptr);
+
+	std::vector<ASTExpression*> injectedArgExprs;
+	for (uint32 i = 0; i < argExprs.size(); i++)
+		injectedArgExprs.push_back(argExprs[i]->InjectTemplateType(program, cls, newScope, instantiation, templatedClass));
+
+	return new ASTExpressionDeclareObject(newScope, injectedType, variableID, injectedArgExprs);
+}
+
 void ASTExpressionDeclareObjectAssign::EmitCode(Program* program)
 {
 	assignExpr->EmitCode(program);
@@ -348,6 +542,19 @@ void ASTExpressionDeclareObjectAssign::EmitCode(Program* program)
 TypeInfo ASTExpressionDeclareObjectAssign::GetTypeInfo(Program* program)
 {
 	return TypeInfo(type, 0);
+}
+
+ASTExpression* ASTExpressionDeclareObjectAssign::InjectTemplateType(Program* program, Class* cls, ID newScope, const TemplateInstantiation& instantiation, Class* templatedClass)
+{
+	uint16 injectedType = type;
+	if (type == (uint16)ValueType::TEMPLATE_TYPE)
+	{
+		uint32 index = cls->InstantiateTemplateGetIndex(program, templateTypeName);
+		injectedType = instantiation.args[index].value;
+	}
+
+	ASTExpression* injectedAssignExpr = assignExpr->InjectTemplateType(program, cls, newScope, instantiation, templatedClass);
+	return new ASTExpressionDeclareObjectAssign(newScope, injectedType, variableID, injectedAssignExpr);
 }
 
 void ASTExpressionMemberAccess::EmitCode(Program* program)
@@ -365,6 +572,12 @@ TypeInfo ASTExpressionMemberAccess::GetTypeInfo(Program* program)
 	return TypeInfo(memberType, memberPointerLevel);
 }
 
+ASTExpression* ASTExpressionMemberAccess::InjectTemplateType(Program* program, Class* cls, ID newScope, const TemplateInstantiation& instantiation, Class* templatedClass)
+{
+	ASTExpression* injectedIndexExpr = indexExpr ? indexExpr->InjectTemplateType(program, cls, newScope, instantiation, templatedClass) : nullptr;
+	return new ASTExpressionMemberAccess(newScope, variableID, offset, memberType, memberPointerLevel, injectedIndexExpr);
+}
+
 void ASTExpressionMemberSet::EmitCode(Program* program)
 {
 	uint64 memberSize = program->GetTypeSize(memberType);
@@ -378,6 +591,13 @@ void ASTExpressionMemberSet::EmitCode(Program* program)
 TypeInfo ASTExpressionMemberSet::GetTypeInfo(Program* program)
 {
 	return TypeInfo(memberType, memberPointerLevel);
+}
+
+ASTExpression* ASTExpressionMemberSet::InjectTemplateType(Program* program, Class* cls, ID newScope, const TemplateInstantiation& instantiation, Class* templatedClass)
+{
+	ASTExpression* injectedAssignExpr = assignExpr->InjectTemplateType(program, cls, newScope, instantiation, templatedClass);
+	ASTExpression* injectedIndexExpr = indexExpr ? indexExpr->InjectTemplateType(program, cls, newScope, instantiation, templatedClass) : nullptr;
+	return new ASTExpressionMemberSet(newScope, variableID, offset, memberType, memberPointerLevel, injectedAssignExpr, injectedIndexExpr);
 }
 
 void ASTExpressionMemberFunctionCall::EmitCode(Program* program)
@@ -406,6 +626,16 @@ bool ASTExpressionMemberFunctionCall::Resolve(Program* program)
 	return true;
 }
 
+ASTExpression* ASTExpressionMemberFunctionCall::InjectTemplateType(Program* program, Class* cls, ID newScope, const TemplateInstantiation& instantiation, Class* templatedClass)
+{
+	ASTExpression* injectedObjExpr = objExpr->InjectTemplateType(program, cls, newScope, instantiation, templatedClass);
+	std::vector<ASTExpression*> injectedArgExprs;
+	for (uint32 i = 0; i < argExprs.size(); i++)
+		injectedArgExprs.push_back(argExprs[i]->InjectTemplateType(program, cls, newScope, instantiation, templatedClass));
+
+	return new ASTExpressionMemberFunctionCall(newScope, injectedObjExpr, functionName, injectedArgExprs);
+}
+
 void ASTExpressionDirectMemberAccess::EmitCode(Program* program)
 {
 	if (assignExpr)
@@ -424,6 +654,20 @@ TypeInfo ASTExpressionDirectMemberAccess::GetTypeInfo(Program* program)
 	return memberTypeInfo;
 }
 
+ASTExpression* ASTExpressionDirectMemberAccess::InjectTemplateType(Program* program, Class* cls, ID newScope, const TemplateInstantiation& instantiation, Class* templatedClass)
+{
+	uint64 injectedOffset = offset;
+	TypeInfo injectedTypeInfo = memberTypeInfo;
+	if (!members.empty())
+	{
+		bool dummy = false;
+		injectedOffset = templatedClass->CalculateOffset(members, &injectedTypeInfo, &dummy);
+	}
+
+	ASTExpression* injectedAssignExpr = assignExpr ? assignExpr->InjectTemplateType(program, cls, newScope, instantiation, templatedClass) : nullptr;
+	return new ASTExpressionDirectMemberAccess(newScope, injectedTypeInfo, injectedOffset, injectedAssignExpr);
+}
+
 void ASTExpressionThis::EmitCode(Program* program)
 {
 	if (!isStatement)
@@ -433,6 +677,11 @@ void ASTExpressionThis::EmitCode(Program* program)
 TypeInfo ASTExpressionThis::GetTypeInfo(Program* program)
 {
 	return TypeInfo(thisType, 0);
+}
+
+ASTExpression* ASTExpressionThis::InjectTemplateType(Program* program, Class* cls, ID newScope, const TemplateInstantiation& instantiation, Class* templatedClass)
+{
+	return new ASTExpressionThis(newScope, thisType);
 }
 
 void ASTExpressionIfElse::EmitCode(Program* program)
@@ -488,6 +737,28 @@ TypeInfo ASTExpressionIfElse::GetTypeInfo(Program* program)
 	return TypeInfo(INVALID_ID, 0);
 }
 
+ASTExpression* ASTExpressionIfElse::InjectTemplateType(Program* program, Class* cls, ID newScope, const TemplateInstantiation& instantiation, Class* templatedClass)
+{
+	ASTExpression* injectedConditionExpr = conditionExpr->InjectTemplateType(program, cls, newScope, instantiation, templatedClass);
+	std::vector<ASTExpression*> injectedIfBody;
+	std::vector<ASTExpression*> injectedElseBody;
+	ID newIfScope = ifScope;
+	ID newElseScope = elseScope;
+	if (newIfScope != INVALID_ID) newIfScope = program->CreateScope(newScope);
+	if (newElseScope != INVALID_ID) newElseScope = program->CreateScope(newScope);
+
+	ID ifs = (newIfScope == INVALID_ID) ? newScope : newIfScope;
+	ID elses = (newElseScope == INVALID_ID) ? newScope : newElseScope;
+
+	for (uint32 i = 0; i < ifExprs.size(); i++)
+		injectedIfBody.push_back(ifExprs[i]->InjectTemplateType(program, cls, ifs, instantiation, templatedClass));
+
+	for (uint32 i = 0; i < elseExprs.size(); i++)
+		injectedElseBody.push_back(elseExprs[i]->InjectTemplateType(program, cls, elses, instantiation, templatedClass));
+
+	return new ASTExpressionIfElse(newScope, newIfScope, newElseScope, injectedConditionExpr, injectedIfBody, injectedElseBody);
+}
+
 void ASTExpressionFor::EmitCode(Program* program)
 {
 	if (declareExpr)
@@ -531,6 +802,23 @@ TypeInfo ASTExpressionFor::GetTypeInfo(Program* program)
 	return TypeInfo(INVALID_ID, 0);
 }
 
+ASTExpression* ASTExpressionFor::InjectTemplateType(Program* program, Class* cls, ID newScope, const TemplateInstantiation& instantiation, Class* templatedClass)
+{
+	ID newBodyScope = forScope;
+	if (newBodyScope != INVALID_ID) newBodyScope = program->CreateScope(newScope);
+
+	ASTExpression* injectedDeclareExpr = declareExpr->InjectTemplateType(program, cls, newScope, instantiation, templatedClass);
+	ASTExpression* injectedConditionExpr = conditionExpr->InjectTemplateType(program, cls, newScope, instantiation, templatedClass);
+	ASTExpression* injectedIncrExpr = incrExpr->InjectTemplateType(program, cls, newScope, instantiation, templatedClass);
+	std::vector<ASTExpression*> injectedBody;
+
+	ID fors = (newBodyScope == INVALID_ID) ? newScope : newBodyScope;
+	for (uint32 i = 0; i < forExprs.size(); i++)
+		injectedBody.push_back(forExprs[i]->InjectTemplateType(program, cls, fors, instantiation, templatedClass));
+
+	return new ASTExpressionFor(newScope, newBodyScope, injectedDeclareExpr, injectedConditionExpr, injectedIncrExpr, injectedBody);
+}
+
 void ASTExpressionUnaryUpdate::EmitCode(Program* program)
 {
 	expr->EmitCode(program); //pushes variable/member/etc onto stack
@@ -540,6 +828,12 @@ void ASTExpressionUnaryUpdate::EmitCode(Program* program)
 TypeInfo ASTExpressionUnaryUpdate::GetTypeInfo(Program* program)
 {
 	return expr->GetTypeInfo(program);
+}
+
+ASTExpression* ASTExpressionUnaryUpdate::InjectTemplateType(Program* program, Class* cls, ID newScope, const TemplateInstantiation& instantiation, Class* templatedClass)
+{
+	ASTExpression* injectedExpr = expr->InjectTemplateType(program, cls, newScope, instantiation, templatedClass);
+	return new ASTExpressionUnaryUpdate(newScope, injectedExpr, op);
 }
 
 void ASTExpressionWhile::EmitCode(Program* program)
@@ -570,6 +864,21 @@ TypeInfo ASTExpressionWhile::GetTypeInfo(Program* program)
 	return TypeInfo(INVALID_ID, 0);
 }
 
+ASTExpression* ASTExpressionWhile::InjectTemplateType(Program* program, Class* cls, ID newScope, const TemplateInstantiation& instantiation, Class* templatedClass)
+{
+	ID newBodyScope = whileScope;
+	if (newBodyScope != INVALID_ID) newBodyScope = program->CreateScope(newScope);
+
+	ASTExpression* injectedConditionExpr = conditionExpr->InjectTemplateType(program, cls, newScope, instantiation, templatedClass);
+	std::vector<ASTExpression*> injectedBody;
+
+	ID whiles = (newBodyScope == INVALID_ID) ? newScope : newBodyScope;
+	for (uint32 i = 0; i < whileExprs.size(); i++)
+		injectedBody.push_back(whileExprs[i]->InjectTemplateType(program, cls, whiles, instantiation, templatedClass));
+
+	return new ASTExpressionWhile(newScope, newBodyScope, injectedConditionExpr, injectedBody);
+}
+
 void ASTExpressionConstructorCall::EmitCode(Program* program)
 {
 	if (isStatement)
@@ -593,6 +902,22 @@ bool ASTExpressionConstructorCall::Resolve(Program* program)
 	return functionID != INVALID_ID;
 }
 
+ASTExpression* ASTExpressionConstructorCall::InjectTemplateType(Program* program, Class* cls, ID newScope, const TemplateInstantiation& instantiation, Class* templatedClass)
+{
+	uint16 injectedType = type;
+	if (type == (uint16)ValueType::TEMPLATE_TYPE)
+	{
+		uint32 index = cls->InstantiateTemplateGetIndex(program, templateTypeName);
+		injectedType = instantiation.args[index].value;
+	}
+
+	std::vector<ASTExpression*> injectedArgExprs;
+	for (uint32 i = 0; i < argExprs.size(); i++)
+		injectedArgExprs.push_back(argExprs[i]->InjectTemplateType(program, cls, newScope, instantiation, templatedClass));
+
+	return new ASTExpressionConstructorCall(newScope, injectedType, injectedArgExprs);
+}
+
 void ASTExpressionBreak::EmitCode(Program* program)
 {
 	program->WriteOPCode(OpCode::BREAK);
@@ -603,6 +928,11 @@ TypeInfo ASTExpressionBreak::GetTypeInfo(Program* program)
 	return TypeInfo(INVALID_ID, 0);
 }
 
+ASTExpression* ASTExpressionBreak::InjectTemplateType(Program* program, Class* cls, ID newScope, const TemplateInstantiation& instantiation, Class* templatedClass)
+{
+	return new ASTExpressionBreak(newScope);
+}
+
 void ASTExpressionContinue::EmitCode(Program* program)
 {
 	program->WriteOPCode(OpCode::CONTINUE);
@@ -611,6 +941,11 @@ void ASTExpressionContinue::EmitCode(Program* program)
 TypeInfo ASTExpressionContinue::GetTypeInfo(Program* program)
 {
 	return TypeInfo(INVALID_ID, 0);
+}
+
+ASTExpression* ASTExpressionContinue::InjectTemplateType(Program* program, Class* cls, ID newScope, const TemplateInstantiation& instantiation, Class* templatedClass)
+{
+	return new ASTExpressionContinue(newScope);
 }
 
 void ASTExpressionDelete::EmitCode(Program* program)
@@ -627,4 +962,8 @@ TypeInfo ASTExpressionDelete::GetTypeInfo(Program* program)
 	return TypeInfo(INVALID_ID, 0);
 }
 
-
+ASTExpression* ASTExpressionDelete::InjectTemplateType(Program* program, Class* cls, ID newScope, const TemplateInstantiation& instantiation, Class* templatedClass)
+{
+	ASTExpression* injectedExpr = expr->InjectTemplateType(program, cls, newScope, instantiation, templatedClass);
+	return new ASTExpressionDelete(newScope, injectedExpr, deleteArray);
+}

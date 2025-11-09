@@ -15,6 +15,7 @@ enum class ValueType
 	REAL32, REAL64,
 	BOOL, CHAR, STRING,
 	VOID_T,
+	TEMPLATE_TYPE,
 	LAST_TYPE
 };
 
