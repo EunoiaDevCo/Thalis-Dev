@@ -20,6 +20,15 @@ void Class::AddFunction(Function* function)
 	{
 		m_Destructor = function;
 	}
+
+	if ((function->name == m_Name) && (function->parameters.size() == 1))
+	{
+		if ((function->parameters[0].type.pointerLevel == 0) &&
+			(function->parameters[0].type.type == m_ID))
+		{
+			m_CopyConstructor = function;
+		}
+	}
 }
 
 void Class::AddStaticField(Program* program, uint16 type, uint8 pointerLevel, uint32 arrayLength, uint64 size, const std::string& name, ASTExpression* initializeExpr)
@@ -224,7 +233,7 @@ void Class::InitStatics(Program* program)
 			else
 			{
 				field.initializeExpr->EmitCode(program);
-				program->AddVariableSetCommand(m_ScopeID, variableID);
+				program->AddVariableSetCommand(m_ScopeID, variableID, INVALID_ID, INVALID_ID);
 			}
 		}
 
@@ -287,7 +296,15 @@ ID Class::InstantiateTemplate(Program* program, const TemplateInstantiation& ins
 
 	std::string name = GenerateTemplateClassName(program, m_Name, instantiation);
 	ID classID = program->GetClassID(name);
-	if (classID != INVALID_ID) return classID;
+	if (classID != INVALID_ID) 
+	{
+		if(generatedID != INVALID_ID)
+		{
+			Class* cls = program->GetClass(classID);
+			program->AddClass2(cls, generatedID);
+		}
+		return classID;
+	}
 
 	Class* cls = new Class(name, m_ScopeID);
 	classID = program->AddClass(name, cls, generatedID);

@@ -351,6 +351,14 @@ bool Parser::ParseFunction(Tokenizer* tokenizer, Class* cls, ID parentScope)
 		param.type.type = ParseType(typeToken);
 		param.type.pointerLevel = ParsePointerLevel(tokenizer);
 
+		param.isReference = false;
+		Token peek = tokenizer->PeekToken();
+		if (peek.type == TokenTypeT::AND)
+		{
+			tokenizer->Expect(TokenTypeT::AND);
+			param.isReference = true;
+		}
+
 		std::string templateTypeName = "";
 		if (param.type.type == INVALID_ID)
 		{
@@ -456,6 +464,7 @@ bool Parser::ParseClassVariable(Tokenizer* tokenizer, Class* cls, ID parentScope
 	}
 
 	Token openAngle = tokenizer->PeekToken();
+	bool addedInstantiationCommand = false;
 	if (openAngle.type == TokenTypeT::LESS)
 	{
 		tokenizer->Expect(TokenTypeT::LESS);
@@ -472,10 +481,11 @@ bool Parser::ParseClassVariable(Tokenizer* tokenizer, Class* cls, ID parentScope
 		else
 		{
 			type = m_Program->GetClass(m_Program->GetClassID(g_CurrentClassName))->AddInstantiationCommand(command);
+			addedInstantiationCommand = true;
 		}
 	}
 
-	uint64 typeSize = m_Program->GetTypeSize(type);
+	uint64 typeSize = addedInstantiationCommand ? 0 : m_Program->GetTypeSize(type);
 	uint8 pointerLevel = ParsePointerLevel(tokenizer);
 
 	if (pointerLevel > 0) typeSize = sizeof(void*);
@@ -1618,8 +1628,8 @@ ASTExpression* Parser::ParsePrimary(Tokenizer* tokenizer, ID currentScope)
 					TypeInfo variableTypeInfo = scope->GetVariableTypeInfo(variableID);
 					TypeInfo memberTypeInfo;
 					bool templatedType = false;
-					uint64 offset = m_Program->GetClass(variableTypeInfo.type)->CalculateOffset(members, &memberTypeInfo, &templatedType);
-					if (templatedType) return nullptr;
+					Class* cls = m_Program->GetClass(variableTypeInfo.type);
+					uint64 offset = cls ? cls->CalculateOffset(members, &memberTypeInfo, &templatedType) : 0;
 
 					Token equals = tokenizer->PeekToken();
 					if (equals.type == TokenTypeT::EQUALS)
@@ -1627,6 +1637,8 @@ ASTExpression* Parser::ParsePrimary(Tokenizer* tokenizer, ID currentScope)
 						tokenizer->Expect(TokenTypeT::EQUALS);
 						ASTExpression* assignExpr = ParseExpression(tokenizer, currentScope);
 						ASTExpressionMemberSet* memberSetExpr = new ASTExpressionMemberSet(currentScope, variableID, offset, memberTypeInfo.type, memberTypeInfo.pointerLevel, assignExpr, indexExpr);
+						if (templatedType)
+							memberSetExpr->members = members;
 						return memberSetExpr;
 					}
 					else if (equals.type == TokenTypeT::DOT)
@@ -1661,8 +1673,9 @@ ASTExpression* Parser::ParsePrimary(Tokenizer* tokenizer, ID currentScope)
 							updatedMembers.pop_back();
 							bool templatedType = false;
 							offset = m_Program->GetClass(variableTypeInfo.type)->CalculateOffset(updatedMembers, &memberTypeInfo, &templatedType);
-							if (templatedType) return nullptr;
 							ASTExpressionMemberAccess* memberAccessExpr = new ASTExpressionMemberAccess(currentScope, variableID, offset, memberTypeInfo.type, memberTypeInfo.pointerLevel, indexExpr);
+							if (templatedType)
+								memberAccessExpr->members = updatedMembers;
 							ASTExpressionMemberFunctionCall* memberFunctionCall = new ASTExpressionMemberFunctionCall(currentScope, memberAccessExpr, functionName, argExprs);
 							return memberFunctionCall;
 						}
@@ -1670,18 +1683,20 @@ ASTExpression* Parser::ParsePrimary(Tokenizer* tokenizer, ID currentScope)
 						{
 							bool templatedType = false;
 							offset = m_Program->GetClass(variableTypeInfo.type)->CalculateOffset(updatedMembers, &memberTypeInfo, &templatedType);
-							if (templatedType) return nullptr;
 							tokenizer->Expect(TokenTypeT::EQUALS);
 							ASTExpression* assignExpr = ParseExpression(tokenizer, currentScope);
 							ASTExpressionMemberSet* memberSetExpr = new ASTExpressionMemberSet(currentScope, variableID, offset, memberTypeInfo.type, memberTypeInfo.pointerLevel, assignExpr, indexExpr);
+							if (templatedType)
+								memberSetExpr->members = updatedMembers;
 							return memberSetExpr;
 						}
 						else
 						{
 							bool templatedType = false;
 							offset = m_Program->GetClass(variableTypeInfo.type)->CalculateOffset(updatedMembers, &memberTypeInfo, &templatedType);
-							if (templatedType) return nullptr;
 							ASTExpressionMemberAccess* memberAccessExpr = new ASTExpressionMemberAccess(currentScope, variableID, offset, memberTypeInfo.type, memberTypeInfo.pointerLevel, indexExpr);
+							if (templatedType)
+								memberAccessExpr->members = updatedMembers;
 							return memberAccessExpr;
 						}
 
@@ -1690,6 +1705,8 @@ ASTExpression* Parser::ParsePrimary(Tokenizer* tokenizer, ID currentScope)
 					else
 					{
 						ASTExpressionMemberAccess* memberAccessExpr = new ASTExpressionMemberAccess(currentScope, variableID, offset, memberTypeInfo.type, memberTypeInfo.pointerLevel, indexExpr);
+						if (templatedType)
+							memberAccessExpr->members = members;
 						return memberAccessExpr;
 					}
 				}
@@ -1759,9 +1776,9 @@ ASTExpression* Parser::ParsePrimary(Tokenizer* tokenizer, ID currentScope)
 						uint64 offset = m_Program->GetClass(m_Program->GetClassID(g_CurrentClassName))->CalculateOffset(members, &memberTypeInfo, &templatedType);
 						if (offset == UINT64_MAX) return nullptr;
 						objExpr = new ASTExpressionDirectMemberAccess(currentScope, memberTypeInfo, offset, nullptr);
-						if(templatedType)
+						if (templatedType)
 							((ASTExpressionDirectMemberAccess*)objExpr)->members = members;
-						if(indexExpr)
+						if (indexExpr)
 							objExpr = new ASTExpressionIndex(currentScope, objExpr, indexExpr, nullptr);
 					}
 					else
@@ -1770,9 +1787,10 @@ ASTExpression* Parser::ParsePrimary(Tokenizer* tokenizer, ID currentScope)
 						TypeInfo memberTypeInfo;
 						bool templatedType = false;
 						uint64 offset = m_Program->GetClass(variableTypeInfo.type)->CalculateOffset(members, &memberTypeInfo, &templatedType);
-						if (templatedType) return nullptr;
 						if (offset == UINT64_MAX) return nullptr;
 						objExpr = new ASTExpressionMemberAccess(currentScope, variableID, offset, memberTypeInfo.type, memberTypeInfo.pointerLevel, indexExpr);
+						if (templatedType)
+							((ASTExpressionMemberAccess*)objExpr)->members = members;
 					}
 				}
 
@@ -1860,8 +1878,9 @@ ASTExpression* Parser::ParsePrimary(Tokenizer* tokenizer, ID currentScope)
 						TypeInfo memberTypeInfo;
 						bool templatedType = false;
 						uint64 offset = m_Program->GetClass(variableType)->CalculateOffset(identifiers, &memberTypeInfo, &templatedType);
-						if (templatedType) return nullptr;
 						objExpr = new ASTExpressionMemberAccess(currentScope, variableID, offset, memberTypeInfo.type, memberTypeInfo.pointerLevel, indexExpr);
+						if (templatedType)
+							((ASTExpressionMemberAccess*)objExpr)->members = identifiers;
 					}
 
 					ASTExpressionMemberFunctionCall* memberFunctionCallExpr = new ASTExpressionMemberFunctionCall(currentScope, objExpr, functionName, argExprs);
@@ -1874,16 +1893,19 @@ ASTExpression* Parser::ParsePrimary(Tokenizer* tokenizer, ID currentScope)
 				TypeInfo memberTypeInfo;
 				bool templatedType = false;
 				uint64 offset = m_Program->GetClass(variableType)->CalculateOffset(identifiers, &memberTypeInfo, &templatedType);
-				if (templatedType) return nullptr;
 
 				if (assignExpr)
 				{
 					ASTExpressionMemberSet* memberSetExpr = new ASTExpressionMemberSet(currentScope, variableID, offset, memberTypeInfo.type, memberTypeInfo.pointerLevel, assignExpr, indexExpr);
+					if (templatedType)
+						memberSetExpr->members = identifiers;
 					return memberSetExpr;
 				}
 				else
 				{
 					ASTExpressionMemberAccess* memberAccessExpr = new ASTExpressionMemberAccess(currentScope, variableID, offset, memberTypeInfo.type, memberTypeInfo.pointerLevel, indexExpr);
+					if (templatedType)
+						memberAccessExpr->members = identifiers;
 					return memberAccessExpr;
 				}
 			}

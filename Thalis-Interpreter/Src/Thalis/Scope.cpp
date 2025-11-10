@@ -5,7 +5,7 @@
 Scope::Scope(Scope* parent) :
 	m_Parent(parent)
 {
-	
+	m_Storage.reserve(64);
 }
 
 void Scope::AddVariable(ID variableID, const Value& value)

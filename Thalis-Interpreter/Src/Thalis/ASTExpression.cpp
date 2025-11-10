@@ -280,8 +280,9 @@ ASTExpression* ASTExpressionDereference::InjectTemplateType(Program* program, Cl
 
 void ASTExpressionVariableSet::EmitCode(Program* program)
 {
+	uint16 variableType = GetTypeInfo(program).type;
 	assignExpr->EmitCode(program);
-	program->AddVariableSetCommand(scope, variableID);
+	program->AddVariableSetCommand(scope, variableID, assignFunctionID, variableType);
 }
 
 TypeInfo ASTExpressionVariableSet::GetTypeInfo(Program* program)
@@ -293,6 +294,18 @@ ASTExpression* ASTExpressionVariableSet::InjectTemplateType(Program* program, Cl
 {
 	ASTExpression* injectedAssignExpr = assignExpr->InjectTemplateType(program, cls, newScope, instantiation, templatedClass);
 	return new ASTExpressionVariableSet(newScope, variableID, injectedAssignExpr);
+}
+
+bool ASTExpressionVariableSet::Resolve(Program* program)
+{
+	TypeInfo varTypeInfo = program->GetScope(scope)->GetVariableTypeInfo(variableID);
+	if (Value::IsPrimitiveType(varTypeInfo.type) || varTypeInfo.pointerLevel > 0) return true;
+
+	Class* cls = program->GetClass(varTypeInfo.type);
+	std::vector<ASTExpression*> args;
+	args.push_back(assignExpr);
+	assignFunctionID = cls->GetFunctionID("operator=", args);
+	return true;
 }
 
 void ASTExpressionStaticFunctionCall::EmitCode(Program* program)
@@ -399,7 +412,7 @@ void ASTExpressionIndex::EmitCode(Program* program)
 	indexExpr->EmitCode(program);
 	if (assignExpr)
 	{
-		program->WriteOPCode(OpCode::INDEX_ASSIGN);
+		program->AddIndexAssignCommand(assignFunctionID);
 	}
 	else
 	{
@@ -420,6 +433,16 @@ ASTExpression* ASTExpressionIndex::InjectTemplateType(Program* program, Class* c
 	ASTExpression* injectedAssignExpr = assignExpr ? assignExpr->InjectTemplateType(program, cls, newScope, instantiation, templatedClass) : nullptr;
 
 	return new ASTExpressionIndex(newScope, injectedExpr, injectedIndexExpr, injectedAssignExpr);
+}
+
+bool ASTExpressionIndex::Resolve(Program* program)
+{
+	TypeInfo typeInfo = GetTypeInfo(program);
+	if (assignExpr == nullptr || Value::IsPrimitiveType(typeInfo.type) || typeInfo.pointerLevel > 0) return true;
+	std::vector<ASTExpression*> args;
+	args.push_back(assignExpr);
+	assignFunctionID = program->GetClass(typeInfo.type)->GetFunctionID("operator=", args);
+	return true;
 }
 
 void ASTExpressionNewArray::EmitCode(Program* program)
@@ -574,8 +597,20 @@ TypeInfo ASTExpressionMemberAccess::GetTypeInfo(Program* program)
 
 ASTExpression* ASTExpressionMemberAccess::InjectTemplateType(Program* program, Class* cls, ID newScope, const TemplateInstantiation& instantiation, Class* templatedClass)
 {
+	uint64 injectedOffset = offset;
+	uint16 injectedMemberType = memberType;
+	uint8 injectedMemberPointerLevel = memberPointerLevel;
+	if (!members.empty())
+	{
+		TypeInfo injectedMemberTypeInfo;
+		bool templated = false;
+		injectedOffset = templatedClass->CalculateOffset(members, &injectedMemberTypeInfo, &templated);
+		injectedMemberType = injectedMemberTypeInfo.type;
+		injectedMemberPointerLevel = injectedMemberTypeInfo.pointerLevel;
+	}
+
 	ASTExpression* injectedIndexExpr = indexExpr ? indexExpr->InjectTemplateType(program, cls, newScope, instantiation, templatedClass) : nullptr;
-	return new ASTExpressionMemberAccess(newScope, variableID, offset, memberType, memberPointerLevel, injectedIndexExpr);
+	return new ASTExpressionMemberAccess(newScope, variableID, injectedOffset, injectedMemberType, injectedMemberPointerLevel, injectedIndexExpr);
 }
 
 void ASTExpressionMemberSet::EmitCode(Program* program)
@@ -585,7 +620,7 @@ void ASTExpressionMemberSet::EmitCode(Program* program)
 	if (indexExpr)
 		indexExpr->EmitCode(program);
 
-	program->AddMemberSetCommand(scope, variableID, offset, memberType, memberSize, memberPointerLevel, indexExpr != nullptr);
+	program->AddMemberSetCommand(scope, variableID, offset, memberType, memberSize, memberPointerLevel, indexExpr != nullptr, assignFunctionID);
 }
 
 TypeInfo ASTExpressionMemberSet::GetTypeInfo(Program* program)
@@ -595,9 +630,32 @@ TypeInfo ASTExpressionMemberSet::GetTypeInfo(Program* program)
 
 ASTExpression* ASTExpressionMemberSet::InjectTemplateType(Program* program, Class* cls, ID newScope, const TemplateInstantiation& instantiation, Class* templatedClass)
 {
+	uint64 injectedOffset = offset;
+	uint16 injectedMemberType = memberType;
+	uint8 injectedMemberPointerLevel = memberPointerLevel;
+	if (!members.empty())
+	{
+		TypeInfo injectedMemberTypeInfo;
+		bool templated = false;
+		injectedOffset = templatedClass->CalculateOffset(members, &injectedMemberTypeInfo, &templated);
+		injectedMemberType = injectedMemberTypeInfo.type;
+		injectedMemberPointerLevel = injectedMemberTypeInfo.pointerLevel;
+	}
+
 	ASTExpression* injectedAssignExpr = assignExpr->InjectTemplateType(program, cls, newScope, instantiation, templatedClass);
 	ASTExpression* injectedIndexExpr = indexExpr ? indexExpr->InjectTemplateType(program, cls, newScope, instantiation, templatedClass) : nullptr;
-	return new ASTExpressionMemberSet(newScope, variableID, offset, memberType, memberPointerLevel, injectedAssignExpr, injectedIndexExpr);
+	return new ASTExpressionMemberSet(newScope, variableID, injectedOffset, injectedMemberType, injectedMemberPointerLevel, injectedAssignExpr, injectedIndexExpr);
+}
+
+bool ASTExpressionMemberSet::Resolve(Program* program)
+{
+	if (Value::IsPrimitiveType(memberType) || memberPointerLevel > 0)
+		return true;
+
+	std::vector<ASTExpression*> args;
+	args.push_back(assignExpr);
+	assignFunctionID = program->GetClass(memberType)->GetFunctionID("operator=", args);
+	return true;
 }
 
 void ASTExpressionMemberFunctionCall::EmitCode(Program* program)
@@ -641,7 +699,7 @@ void ASTExpressionDirectMemberAccess::EmitCode(Program* program)
 	if (assignExpr)
 	{
 		assignExpr->EmitCode(program);
-		program->AddDirectMemberAssignCommand(offset, memberTypeInfo.type, memberTypeInfo.pointerLevel, program->GetTypeSize(memberTypeInfo.type));
+		program->AddDirectMemberAssignCommand(offset, memberTypeInfo.type, memberTypeInfo.pointerLevel, program->GetTypeSize(memberTypeInfo.type), assignFunctionID);
 	}
 	else
 	{
@@ -666,6 +724,16 @@ ASTExpression* ASTExpressionDirectMemberAccess::InjectTemplateType(Program* prog
 
 	ASTExpression* injectedAssignExpr = assignExpr ? assignExpr->InjectTemplateType(program, cls, newScope, instantiation, templatedClass) : nullptr;
 	return new ASTExpressionDirectMemberAccess(newScope, injectedTypeInfo, injectedOffset, injectedAssignExpr);
+}
+
+bool ASTExpressionDirectMemberAccess::Resolve(Program* program)
+{
+	if (assignExpr == nullptr || Value::IsPrimitiveType(memberTypeInfo.type) || memberTypeInfo.pointerLevel > 0)
+		return true;
+	std::vector<ASTExpression*> args;
+	args.push_back(assignExpr);
+	assignFunctionID = program->GetClass(memberTypeInfo.type)->GetFunctionID("operator=", args);
+	return true;
 }
 
 void ASTExpressionThis::EmitCode(Program* program)

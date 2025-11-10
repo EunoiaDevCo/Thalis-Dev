@@ -5,7 +5,7 @@
 #include <vector>
 #include <iostream>
 
-#define MAX_ARRAY_DIMENSIONS 8
+#define POINTER_LEVEL_REFERENCEE UINT8_MAX
 
 enum class ValueType
 {

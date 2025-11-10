@@ -171,13 +171,15 @@ struct ASTExpressionVariableSet : public ASTExpression
 {
 	ID variableID;
 	ASTExpression* assignExpr;
+	uint16 assignFunctionID;
 
 	ASTExpressionVariableSet(ID scope, ID variableID, ASTExpression* assignExpr) :
-		ASTExpression(scope), variableID(variableID), assignExpr(assignExpr) { }
+		ASTExpression(scope), variableID(variableID), assignExpr(assignExpr), assignFunctionID(INVALID_ID) { }
 
 	virtual void EmitCode(Program* program) override;
 	virtual TypeInfo GetTypeInfo(Program* program) override;
 	virtual ASTExpression* InjectTemplateType(Program* program, Class* cls, ID newScope, const TemplateInstantiation& instantiation, Class* templatedClass) override;
+	virtual bool Resolve(Program* program) override;
 };
 
 struct ASTExpressionStaticFunctionCall : public ASTExpression
@@ -231,13 +233,15 @@ struct ASTExpressionIndex : public ASTExpression
 	ASTExpression* expr;
 	ASTExpression* indexExpr;
 	ASTExpression* assignExpr;
+	uint16 assignFunctionID;
 
 	ASTExpressionIndex(ID scope, ASTExpression* expr, ASTExpression* indexExpr, ASTExpression* assignExpr = nullptr) :
-		ASTExpression(scope), expr(expr), indexExpr(indexExpr), assignExpr(assignExpr) { }
+		ASTExpression(scope), expr(expr), indexExpr(indexExpr), assignExpr(assignExpr), assignFunctionID(INVALID_ID) { }
 
 	virtual void EmitCode(Program* program) override;
 	virtual TypeInfo GetTypeInfo(Program* program) override;
 	virtual ASTExpression* InjectTemplateType(Program* program, Class* cls, ID newScope, const TemplateInstantiation& instantiation, Class* templatedClass) override;
+	virtual bool Resolve(Program* program) override;
 };
 
 struct ASTExpressionNewArray : public ASTExpression
@@ -310,6 +314,7 @@ struct ASTExpressionMemberAccess : public ASTExpression
 	uint16 memberType;
 	uint8 memberPointerLevel;
 	ASTExpression* indexExpr;
+	std::vector<std::string> members;
 
 	ASTExpressionMemberAccess(ID scope, ID variableID, uint64 offset, uint16 memberType, uint8 memberPointerLevel, ASTExpression* indexExpr = nullptr) :
 		ASTExpression(scope), variableID(variableID), offset(offset), memberType(memberType), memberPointerLevel(memberPointerLevel), indexExpr(indexExpr) { }
@@ -327,14 +332,17 @@ struct ASTExpressionMemberSet : public ASTExpression
 	uint8 memberPointerLevel;
 	ASTExpression* assignExpr;
 	ASTExpression* indexExpr;
+	std::vector<std::string> members;
+	uint16 assignFunctionID;
 
 	ASTExpressionMemberSet(ID scope, ID variableID, uint64 offset, uint16 memberType, uint8 memberPointerLevel, ASTExpression* assignExpr, ASTExpression* indexExpr = nullptr) :
 		ASTExpression(scope), variableID(variableID), offset(offset), memberType(memberType), memberPointerLevel(memberPointerLevel),
-		assignExpr(assignExpr), indexExpr(indexExpr) { }
+		assignExpr(assignExpr), indexExpr(indexExpr), assignFunctionID(INVALID_ID) { }
 
 	virtual void EmitCode(Program* program) override;
 	virtual TypeInfo GetTypeInfo(Program* program) override;
 	virtual ASTExpression* InjectTemplateType(Program* program, Class* cls, ID newScope, const TemplateInstantiation& instantiation, Class* templatedClass) override;
+	virtual bool Resolve(Program* program) override;
 };
 
 struct ASTExpressionMemberFunctionCall : public ASTExpression
@@ -359,13 +367,15 @@ struct ASTExpressionDirectMemberAccess : public ASTExpression
 	uint64 offset;
 	ASTExpression* assignExpr;
 	std::vector<std::string> members;
+	uint16 assignFunctionID;
 
 	ASTExpressionDirectMemberAccess(ID scope, const TypeInfo& memberTypeInfo, uint64 offset, ASTExpression* assignExpr = nullptr) :
-		ASTExpression(scope), memberTypeInfo(memberTypeInfo), offset(offset), assignExpr(assignExpr) { }
+		ASTExpression(scope), memberTypeInfo(memberTypeInfo), offset(offset), assignExpr(assignExpr), assignFunctionID(INVALID_ID) { }
 
 	virtual void EmitCode(Program* program) override;
 	virtual TypeInfo GetTypeInfo(Program* program) override;
 	virtual ASTExpression* InjectTemplateType(Program* program, Class* cls, ID newScope, const TemplateInstantiation& instantiation, Class* templatedClass) override;
+	virtual bool Resolve(Program* program) override;
 };
 
 struct ASTExpressionThis : public ASTExpression

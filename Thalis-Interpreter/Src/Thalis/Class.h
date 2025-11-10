@@ -6,7 +6,10 @@
 #include <vector>
 #include "ASTExpression.h"
 #include "Template.h"
+#include "FunctionArg.h"
 #include <unordered_map>
+
+class Program;
 
 enum class AccessModifier : uint32
 {
@@ -18,6 +21,7 @@ struct FunctionParameter
 	TypeInfo type;
 	ID variableID;
 	std::string templateTypeName;
+	bool isReference;
 };
 
 struct Function
@@ -56,7 +60,6 @@ struct ClassStaticData
 	void* data;
 };
 
-class Program;
 class Class
 {
 public:
@@ -65,6 +68,7 @@ public:
 		m_Name(name),
 		m_ScopeID(scopeID),
 		m_Destructor(nullptr),
+		m_CopyConstructor(nullptr),
 		m_IsTemplateInstance(false)
 	{ }
 
@@ -82,7 +86,8 @@ public:
 
 	inline Function* GetFunction(ID functionID) { return m_FunctionMap[functionID]; }
 	inline std::vector<FunctionParameter>& GetFunctionParameters(ID functionID) { return m_FunctionMap[functionID]->parameters; }
-	inline Function* GetDestructor() { return m_Destructor; }
+	inline Function* GetDestructor() const { return m_Destructor; }
+	inline Function* GetCopyConstructor() const { return m_CopyConstructor; }
 	inline const std::vector<ClassField>& GetMemberFields() const { return m_MemberFields; }
 
 	uint32 GetFunctionID(const std::string& name, const std::vector<ASTExpression*>& args);
@@ -102,6 +107,9 @@ public:
 	ID InstantiateTemplate(Program* program, const TemplateInstantiation& instantiation, ID generatedID = INVALID_ID);
 	ID AddInstantiationCommand(TemplateInstantiationCommand* command);
 	int32 InstantiateTemplateGetIndex(Program* program, const std::string& templateTypeName);
+
+	inline bool HasDestructor() const { return m_Destructor != nullptr; }
+	inline bool HasCopyConstructor() const { return m_CopyConstructor != nullptr; }
 private:
 	void ExecuteInstantiationCommands(Program* program, const TemplateInstantiation& instantiation);
 	uint32 ExecuteInstantiationCommand(Program* program, TemplateInstantiationCommand* command, const TemplateInstantiation& instantiation, ID generatedID);
@@ -119,6 +127,7 @@ private:
 	uint32 m_NextFunctionID;
 
 	Function* m_Destructor;
+	Function* m_CopyConstructor;
 
 	std::vector<ClassField> m_StaticFields;
 	std::vector<ClassField> m_MemberFields;

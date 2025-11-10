@@ -26,7 +26,7 @@ public:
 
 private:
 	Scope* m_Parent;
-	std::deque<Value> m_Storage;
+	std::vector<Value> m_Storage;
 	std::unordered_map<ID, uint32> m_VariableMap;
 	std::unordered_map<std::string, ID>	m_VariableNameMap;
 	std::unordered_map<ID, std::pair<TypeInfo, std::string>> m_VariableTypes;

@@ -32,8 +32,6 @@ void Program::ExecuteProgram(uint32 pc)
 	while (opcode != OpCode::END)
 	{
 		ExecuteOpCode(opcode);
-		ExecutePendingDestructors();
-
 		opcode = ReadOPCode();
 	}
 }
@@ -259,14 +257,19 @@ void Program::AddDeclareObjectWithAssignCommand(uint16 type, ID scope, ID variab
 	WriteUInt32(variableID);
 }
 
-void Program::AddVariableSetCommand(ID scope, ID variableID)
+void Program::AddVariableSetCommand(ID scope, ID variableID, uint16 assignFunctionID, uint16 variableType)
 {
 	WriteOPCode(OpCode::VARIABLE_SET);
 	WriteUInt32(scope);
 	WriteUInt32(variableID);
+	WriteUInt16(assignFunctionID);
+	if (assignFunctionID != INVALID_ID)
+	{
+		WriteUInt16(variableType);
+	}
 }
 
-void Program::AddMemberSetCommand(ID scope, ID variableID, uint64 offset, uint16 type, uint64 size, uint8 memberPointerLevel, bool indexArray)
+void Program::AddMemberSetCommand(ID scope, ID variableID, uint64 offset, uint16 type, uint64 size, uint8 memberPointerLevel, bool indexArray, uint16 assignFunctionID)
 {
 	WriteOPCode(OpCode::MEMBER_SET);
 	WriteUInt32(scope);
@@ -276,6 +279,7 @@ void Program::AddMemberSetCommand(ID scope, ID variableID, uint64 offset, uint16
 	WriteUInt64(size);
 	WriteUInt8(memberPointerLevel);
 	WriteUInt8(indexArray);
+	WriteUInt16(assignFunctionID);
 }
 
 void Program::AddNewArrayCommand(uint16 type, uint8 pointerLevel)
@@ -325,13 +329,14 @@ void Program::AddDirectMemberAccessCommand(uint64 offset, uint16 memberType, uin
 	WriteUInt8(memberPointerLevel);
 }
 
-void Program::AddDirectMemberAssignCommand(uint64 offset, uint16 memberType, uint8 memberPointerLevel, uint64 memberTypeSize)
+void Program::AddDirectMemberAssignCommand(uint64 offset, uint16 memberType, uint8 memberPointerLevel, uint64 memberTypeSize, uint16 assignFunctionID)
 {
 	WriteOPCode(OpCode::DIRECT_MEMBER_ASSIGN);
 	WriteUInt64(offset);
 	WriteUInt16(memberType);
 	WriteUInt8(memberPointerLevel);
 	WriteUInt64(memberTypeSize);
+	WriteUInt16(assignFunctionID);
 }
 
 void Program::AddPushScopeCommand(ID scope)
@@ -378,6 +383,12 @@ void Program::AddNewCommand(uint16 type, uint16 functionID)
 	WriteOPCode(OpCode::NEW);
 	WriteUInt16(type);
 	WriteUInt16(functionID);
+}
+
+void Program::AddIndexAssignCommand(uint16 assignFunctionID)
+{
+	WriteOPCode(OpCode::INDEX_ASSIGN);
+	WriteUInt16(assignFunctionID);
 }
 
 uint32 Program::GetCodeSize() const
@@ -759,16 +770,7 @@ void Program::ExecuteOpCode(OpCode opcode)
 		Function* function = cls->GetFunction(functionID);
 
 		Scope* scope = GetScope(function->scope);
-		for (int32 i = function->parameters.size() - 1; i >= 0 ; i--)
-		{
-			const FunctionParameter& param = function->parameters[i];
-			Value arg = m_Stack.back().Clone(this, m_StackAllocator);
-			m_Stack.pop_back();
-			if (arg.type != param.type.type)
-				arg = arg.CastTo(this, param.type.type, param.type.pointerLevel, m_StackAllocator);
-
-			scope->AddVariable(param.variableID, arg);
-		}
+		AddFunctionParametersToScope(scope, function);
 
 		// Save current frame
 		CallFrame frame;
@@ -796,16 +798,7 @@ void Program::ExecuteOpCode(OpCode opcode)
 		m_ThisStack.push_back(objToCallFunctionOn);
 
 		Scope* scope = GetScope(function->scope);
-		for (int32 i = function->parameters.size() - 1; i >= 0; i--)
-		{
-			const FunctionParameter& param = function->parameters[i];
-			Value arg = m_Stack.back().Clone(this, m_StackAllocator);
-			m_Stack.pop_back();
-			if (arg.type != param.type.type)
-				arg = arg.CastTo(this, param.type.type, param.type.pointerLevel, m_StackAllocator);
-
-			scope->AddVariable(param.variableID, arg);
-		}
+		AddFunctionParametersToScope(scope, function);
 
 		CallFrame frame;
 		frame.returnPC = m_ProgramCounter; // after this instruction
@@ -830,16 +823,7 @@ void Program::ExecuteOpCode(OpCode opcode)
 		m_ThisStack.push_back(object);
 
 		Scope* scope = GetScope(function->scope);
-		for (int32 i = function->parameters.size() - 1; i >= 0; i--)
-		{
-			const FunctionParameter& param = function->parameters[i];
-			Value arg = m_Stack.back().Clone(this, m_StackAllocator);
-			m_Stack.pop_back();
-			if (arg.type != param.type.type)
-				arg = arg.CastTo(this, param.type.type, param.type.pointerLevel, m_StackAllocator);
-
-			scope->AddVariable(param.variableID, arg);
-		}
+		AddFunctionParametersToScope(scope, function);
 
 		m_Stack.push_back(object);
 
@@ -1060,16 +1044,7 @@ void Program::ExecuteOpCode(OpCode opcode)
 			m_ProgramCounter = function->pc;
 
 			Scope* scope = GetScope(function->scope);
-			for (int32 i = function->parameters.size() - 1; i >= 0; i--)
-			{
-				const FunctionParameter& param = function->parameters[i];
-				Value arg = m_Stack.back().Clone(this, m_StackAllocator);
-				m_Stack.pop_back();
-				if (arg.type != param.type.type)
-					arg = arg.CastTo(this, param.type.type, param.type.pointerLevel, m_StackAllocator);
-
-				scope->AddVariable(param.variableID, arg);
-			}
+			AddFunctionParametersToScope(scope, function);
 		}
 
 		GetScope(scopeID)->AddVariable(variableID, object);
@@ -1103,7 +1078,20 @@ void Program::ExecuteOpCode(OpCode opcode)
 		m_Stack.pop_back();
 		ID scopeID = ReadUInt32();
 		ID variableID = ReadUInt32();
-		GetScope(scopeID)->GetVariable(variableID)->Assign(value);
+		uint16 assignFunctionID = ReadUInt16();
+		if(assignFunctionID == INVALID_ID)
+		{
+			GetScope(scopeID)->GetVariable(variableID)->Assign(value);
+		}
+		else //if assignFunctionID is valid then the variable is guaranteed to not be a pointer
+		{
+			uint16 variableType = ReadUInt16();
+			Class* cls = GetClass(variableType);
+			Function* assignFunction = cls->GetFunction(assignFunctionID);
+			Value thisValue = *GetScope(scopeID)->GetVariable(variableID);
+
+			ExecuteAssignFunction(thisValue, value, assignFunction);
+		}
 	} break;
 	case OpCode::MEMBER_SET: {
 		ID scopeID = ReadUInt32();
@@ -1113,6 +1101,7 @@ void Program::ExecuteOpCode(OpCode opcode)
 		uint64 typeSize = ReadUInt64();
 		uint8 memberPointerLevel = ReadUInt8();
 		bool indexArray = ReadUInt8();
+		uint16 assignFunctionID = ReadUInt16();
 		if (indexArray)
 		{
 			uint32 index = m_Stack.back().GetUInt32();
@@ -1123,7 +1112,22 @@ void Program::ExecuteOpCode(OpCode opcode)
 
 		Value* variable = GetScope(scopeID)->GetVariable(variableID);
 		Value assignValue = m_Stack.back(); m_Stack.pop_back();
-		variable->AssignMember(offset, type, memberPointerLevel, typeSize, assignValue);
+
+		if (assignFunctionID == INVALID_ID)
+		{
+			variable->AssignMember(offset, type, memberPointerLevel, typeSize, assignValue);
+		}
+		else
+		{
+			Value member;
+			member.type = type;
+			member.pointerLevel = 0;
+			member.isArray = false;
+			member.data = (uint8*)variable->data + offset;
+
+			Function* assignFunction = GetClass(type)->GetFunction(assignFunctionID);
+			ExecuteAssignFunction(member, assignValue, assignFunction);
+		}
 	} break;
 	case OpCode::INDEX: {
 		Value index = m_Stack.back(); m_Stack.pop_back();
@@ -1142,14 +1146,30 @@ void Program::ExecuteOpCode(OpCode opcode)
 		m_Stack.push_back(result);
 	} break;
 	case OpCode::INDEX_ASSIGN: {
+		uint16 assignFunctionID = ReadUInt16();
 		Value index = m_Stack.back(); m_Stack.pop_back();
 		Value base = m_Stack.back(); m_Stack.pop_back();
 		Value assign = m_Stack.back(); m_Stack.pop_back();
 		uint32 elementSize = GetTypeSize(base.type);
 		uint32 offset = index.GetUInt32();
 
-		uint8* address = (uint8*)base.data + offset * elementSize;
-		memcpy(address, assign.data, elementSize);
+		if (assignFunctionID == INVALID_ID)
+		{
+			uint8* address = (uint8*)base.data + offset * elementSize;
+			memcpy(address, assign.data, elementSize);
+		}
+		else
+		{
+			Value element;
+			element.type = base.type;
+			element.pointerLevel = 0;
+			element.isArray = false;
+			element.data = (uint8*)base.data + offset * elementSize;
+
+			Function* assignFunction = GetClass(element.type)->GetFunction(assignFunctionID);
+
+			ExecuteAssignFunction(element, assign, assignFunction);
+		}
 	} break;
 	case OpCode::NEW_ARRAY: {
 		Value length = m_Stack.back(); m_Stack.pop_back();
@@ -1183,10 +1203,26 @@ void Program::ExecuteOpCode(OpCode opcode)
 		uint16 memberType = ReadUInt16();
 		uint8 memberPointerLevel = ReadUInt8();
 		uint64 memberTypeSize = ReadUInt64();
+		uint16 assignFunctionID = ReadUInt16();
 		Value& thisValue = m_ThisStack.back();
 		Value& assignValue = m_Stack.back(); m_Stack.pop_back();
 
-		thisValue.AssignMember(offset, memberType, memberPointerLevel, memberTypeSize, assignValue);
+		if (assignFunctionID == INVALID_ID)
+		{
+			thisValue.AssignMember(offset, memberType, memberPointerLevel, memberTypeSize, assignValue);
+		}
+		else
+		{
+			Value member;
+			member.type = memberType;
+			member.isArray = false;
+			member.pointerLevel = 0;
+			member.data = (uint8*)thisValue.data + offset;
+
+			Function* assignFunction = GetClass(memberType)->GetFunction(assignFunctionID);
+
+			ExecuteAssignFunction(member, assignValue, assignFunction);
+		}
 	} break;
 	case OpCode::UNARY_UPDATE: {
 		uint8 type = ReadUInt8();
@@ -1264,16 +1300,7 @@ void Program::ExecuteOpCode(OpCode opcode)
 			m_ThisStack.push_back(object);
 
 			Scope* scope = GetScope(function->scope);
-			for (int32 i = function->parameters.size() - 1; i >= 0; i--)
-			{
-				const FunctionParameter& param = function->parameters[i];
-				Value arg = m_Stack.back().Clone(this, m_StackAllocator);
-				m_Stack.pop_back();
-				if (arg.type != param.type.type)
-					arg = arg.CastTo(this, param.type.type, param.type.pointerLevel, m_StackAllocator);
-
-				scope->AddVariable(param.variableID, arg);
-			}
+			AddFunctionParametersToScope(scope, function);
 
 			m_Stack.push_back(object);
 
@@ -1314,6 +1341,133 @@ void Program::ExecuteModuleConstant(ID moduleID, uint16 constant)
 		m_Stack.push_back(IOModule::Constant(constant));
 	} break;
 	}
+}
+
+void Program::AddFunctionParametersToScope(Scope* scope, Function* function)
+{
+	for (int32 i = function->parameters.size() - 1; i >= 0; i--)
+	{
+		const FunctionParameter& param = function->parameters[i];
+		Value arg = m_Stack.back(); m_Stack.pop_back();
+		if (!param.isReference)
+		{
+			Value original = arg;
+			arg = arg.Clone(this, m_StackAllocator);
+			if (!Value::IsPrimitiveType(param.type.type) && param.type.pointerLevel == 0)
+			{
+				Class* cls = GetClass(param.type.type);
+				Function* copyConstructor = cls->GetCopyConstructor();
+				uint32 count = m_PendingCopyConstructors.size();
+				if (copyConstructor)
+				{
+					m_PendingCopyConstructors.push_back(PendingCopyConstructor(arg, original, copyConstructor));
+				}
+				else
+				{
+					AddCopyConstructorRecursive(arg, original);
+				}
+
+				ExecutePendingCopyConstructors(count);
+			}
+		}
+		else
+		{
+			arg.pointerLevel = POINTER_LEVEL_REFERENCEE;
+		}
+
+		if (arg.type != param.type.type)
+		{
+			arg = arg.CastTo(this, param.type.type, param.type.pointerLevel, m_StackAllocator);
+		}
+
+		scope->AddVariable(param.variableID, arg);
+	}
+}
+
+void Program::AddCopyConstructorRecursive(const Value& dst, const Value& src, uint64 offset)
+{
+	Class* cls = GetClass(dst.type);
+	const std::vector<ClassField>& members = cls->GetMemberFields();
+	for (uint32 i = 0; i < members.size(); i++)
+	{
+		const TypeInfo& memberType = members[i].type;
+		uint64 memberOffset = members[i].offset;
+		if (Value::IsPrimitiveType(memberType.type) || memberType.pointerLevel > 0)
+			continue;
+
+		Value dstMember = Value::MakeNULL(memberType.type, 0);
+		Value srcMember = Value::MakeNULL(memberType.type, 0);
+
+		dstMember.data = (uint8*)dst.data + memberOffset + offset;
+		srcMember.data = (uint8*)src.data + memberOffset + offset;
+
+		Class* memberClass = GetClass(memberType.type);
+		Function* copyConstructor = memberClass->GetCopyConstructor();
+		if (copyConstructor)
+		{
+			m_PendingCopyConstructors.push_back(PendingCopyConstructor(dstMember, srcMember, copyConstructor));
+		}
+		else
+		{
+			AddCopyConstructorRecursive(dst, src, offset + memberOffset);
+		}
+	}
+}
+
+void Program::ExecutePendingCopyConstructors(uint32 offset)
+{
+	for (uint32 i = offset; i < m_PendingCopyConstructors.size(); i++)
+	{
+		const PendingCopyConstructor& cc = m_PendingCopyConstructors[i];
+		const Value& dst = cc.dst;
+		const Value& src = cc.src;
+		Function* function = cc.function;
+
+		m_Stack.push_back(src);
+		m_ThisStack.push_back(dst);
+
+		Scope* scope = GetScope(function->scope);
+		AddFunctionParametersToScope(scope, function);
+
+		CallFrame frame;
+		frame.returnPC = m_ProgramCounter; // after this instruction
+		frame.basePointer = (uint32)m_Stack.size(); // current stack top before call
+		frame.marker = m_StackAllocator->GetMarker();
+		frame.functionScope = function->scope;
+		frame.usesReturnValue = false;
+		frame.popThisStack = true;
+		PushCallStack(frame);
+
+		m_ProgramCounter = function->pc;
+		while (m_ProgramCounter != frame.returnPC)
+		{
+			OpCode opcode = ReadOPCode();
+			if (opcode == OpCode::END) break;
+			ExecuteOpCode(opcode);
+		}
+	}
+
+	m_PendingCopyConstructors.resize(offset);
+}
+
+void Program::ExecuteAssignFunction(const Value& thisValue, const Value& assignValue, Function* assignFunction)
+{
+	m_Stack.push_back(assignValue);
+	Scope* scope = GetScope(assignFunction->scope);
+	AddFunctionParametersToScope(scope, assignFunction);
+
+	m_ThisStack.push_back(thisValue);
+
+	CallFrame frame;
+	frame.returnPC = m_ProgramCounter; // after this instruction
+	frame.basePointer = (uint32)m_Stack.size(); // current stack top before call
+	frame.marker = m_StackAllocator->GetMarker();
+	frame.functionScope = assignFunction->scope;
+	frame.usesReturnValue = false;
+	frame.popThisStack = true;
+	PushCallStack(frame);
+
+	m_ProgramCounter = assignFunction->pc;
 }
 
 void Program::WriteUInt64(uint64 value)
@@ -1538,6 +1692,11 @@ ID Program::AddClass(const std::string& name, Class* cls, ID generatedID)
 	return classID;
 }
 
+void Program::AddClass2(Class* cls, ID generatedID)
+{
+	m_Classes[generatedID] = cls;
+}
+
 ID Program::GetClassID(const std::string& name) const
 {
 	const auto&& it = m_ClassNameMap.find(name);
@@ -1548,7 +1707,11 @@ ID Program::GetClassID(const std::string& name) const
 
 Class* Program::GetClass(ID id)
 {
-	return m_Classes[id];
+	const auto&& it = m_Classes.find(id);
+	if (it == m_Classes.end())
+		return nullptr;
+
+	return it->second;
 }
 
 static ValueType PrimitiveTypeFromName(const std::string& name)

@@ -8,6 +8,11 @@
 #include <vector>
 #include <unordered_map>
 
+class Class;
+class Scope;
+struct ASTExpression;
+struct Function;
+
 enum class OpCode : uint16
 {
 	JUMP, JUMP_IF_FALSE,
@@ -64,9 +69,19 @@ struct LoopFrame
 	uint32 endPC;
 };
 
-class Class;
-class Scope;
-struct ASTExpression;
+struct PendingCopyConstructor
+{
+	PendingCopyConstructor(const Value& dst, const Value& src, Function* function) :
+		dst(dst), src(src), function(function) { }
+
+	PendingCopyConstructor() :
+		dst(Value::MakeNULL()), src(Value::MakeNULL()), function(nullptr) { }
+
+	Value dst;
+	Value src;
+	Function* function;
+};
+
 class Program
 {
 public:
@@ -97,8 +112,8 @@ public:
 	void AddDeclareArrayCommand(uint16 type, uint8 pointerLevel, uint32 length, uint32 initializerCount, ID scope, ID variableID);
 	void AddDeclareObjectWithConstructorCommand(uint16 type, uint16 functionID, ID scope, ID variableID);
 	void AddDeclareObjectWithAssignCommand(uint16 type, ID scope, ID variableID);
-	void AddVariableSetCommand(ID scope, ID variableID);
-	void AddMemberSetCommand(ID scope, ID variableID, uint64 offset, uint16 type, uint64 size, uint8 memberPointerLevel, bool indexArray);
+	void AddVariableSetCommand(ID scope, ID variableID, uint16 assignFunctionID, uint16 variableType);
+	void AddMemberSetCommand(ID scope, ID variableID, uint64 offset, uint16 type, uint64 size, uint8 memberPointerLevel, bool indexArray, uint16 assignFunctionID);
 	void AddNewArrayCommand(uint16 type, uint8 pointerLevel);
 
 	void AddModuleFunctionCallCommand(ID moduleID, uint16 functionID, uint8 argCount, bool usesReturnValue);
@@ -107,7 +122,7 @@ public:
 	void AddMemberFunctionCallCommand(ID classID, uint16 functionID, bool usesReturnValue);
 
 	void AddDirectMemberAccessCommand(uint64 offset, uint16 memberType, uint8 memberPointerLevel);
-	void AddDirectMemberAssignCommand(uint64 offset, uint16 memberType, uint8 memberPointerLevel, uint64 memberTypeSize);
+	void AddDirectMemberAssignCommand(uint64 offset, uint16 memberType, uint8 memberPointerLevel, uint64 memberTypeSize, uint16 assignFunctionID);
 
 	void AddPushScopeCommand(ID scope);
 	void AddPopScopeCommand();
@@ -116,6 +131,7 @@ public:
 	uint32 AddPushLoopCommand();
 	void AddPopLoopCommand();
 	void AddNewCommand(uint16 type, uint16 functionID);
+	void AddIndexAssignCommand(uint16 assignFunctionID);
 
 	uint32 GetCodeSize() const;
 	uint32 GetStackSize() const;
@@ -124,6 +140,7 @@ public:
 	ID GetModuleID(const std::string& name) const;
 
 	ID AddClass(const std::string& name, Class* cls, ID generatedID = INVALID_ID);
+	void AddClass2(Class* cls, ID generatedID);
 	ID GetClassID(const std::string& name) const;
 	Class* GetClass(ID id);
 	uint16 GetTypeID(const std::string& name) const;
@@ -173,6 +190,10 @@ private:
 	void ExecutePendingDestructors(uint32 offset = 0);
 	void ExecuteModuleFunctionCall(ID moduleID, uint16 function, bool usesReturnValue);
 	void ExecuteModuleConstant(ID moduleID, uint16 constant);
+	void AddFunctionParametersToScope(Scope* scope, Function* function);
+	void AddCopyConstructorRecursive(const Value& dst, const Value& src, uint64 offset = 0);
+	void ExecutePendingCopyConstructors(uint32 offset = 0);
+	void ExecuteAssignFunction(const Value& thisValue, const Value& assignValue, Function* assignFunction);
 
 	uint64 ReadUInt64();
 	uint32 ReadUInt32();
@@ -216,6 +237,7 @@ private:
 	std::vector<LoopFrame> m_LoopStack;
 
 	std::vector<Value> m_PendingDestructors;
+	std::vector<PendingCopyConstructor> m_PendingCopyConstructors;
 	void* m_PendingDelete;
 
 	ID m_ClassWithMainFunction;
