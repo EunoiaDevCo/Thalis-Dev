@@ -7,41 +7,11 @@
 #include "ASTExpression.h"
 #include "Template.h"
 #include "FunctionArg.h"
+#include "Function.h"
+#include "VTable.h"
 #include <unordered_map>
 
 class Program;
-
-enum class AccessModifier : uint32
-{
-	PUBLIC, PRIVATE
-};
-
-struct FunctionParameter
-{
-	TypeInfo type;
-	ID variableID;
-	std::string templateTypeName;
-	bool isReference;
-};
-
-struct Function
-{
-	std::string name;
-	bool isStatic;
-	bool isVirtual;
-	AccessModifier accessModifier;
-	uint32 pc;
-	TypeInfo returnInfo;
-	std::vector<FunctionParameter> parameters;
-	std::vector<ASTExpression*> body;
-	uint32 id;
-	ID scope;
-	std::string returnTemplateTypeName;
-
-	std::string GenerateSignature() const;
-
-	static std::string GenerateSignatureFromArgs(Program* program, const std::string& name, const std::vector<ASTExpression*>& args);
-};
 
 struct ClassField
 {
@@ -55,20 +25,17 @@ struct ClassField
 	std::string arrayDimensionTemplateSize;
 };
 
-struct ClassStaticData
-{
-	void* data;
-};
-
 class Class
 {
 public:
-	Class(const std::string& name, ID scopeID) : 
+	Class(const std::string& name, ID scopeID, Class* baseClass = nullptr) :
 		m_NextFunctionID(0),
 		m_Name(name),
 		m_ScopeID(scopeID),
 		m_Destructor(nullptr),
 		m_CopyConstructor(nullptr),
+		m_AssignSTFunction(nullptr),
+		m_BaseClass(baseClass),
 		m_IsTemplateInstance(false)
 	{ }
 
@@ -76,13 +43,11 @@ public:
 	inline const std::string& GetName() const { return m_Name; }
 	inline ID GetScopeID() const { return m_ScopeID; }
 	inline uint64 GetSize() const { return m_Size; }
-	inline void SetSize(uint64 size) { m_Size = size; }
+	inline void SetSize(uint64 size) { if (HasBaseClass()) m_Size = m_BaseClass->GetSize() + size; else m_Size = size; }
 
 	void AddFunction(Function* function);
 	void AddStaticField(Program* program, uint16 type, uint8 pointerLevel, uint32 arrayLength, uint64 size, const std::string& name, ASTExpression* initializeExpr = nullptr);
 	void AddMemberField(uint16 type, uint8 pointerLevel, uint32 arrayLength, uint64 size, uint64 offset, const std::string& name, const std::string& templateTypeName);
-
-	ClassField GetMemberFieldByOffset(uint64 offset) const;
 
 	inline Function* GetFunction(ID functionID) { return m_FunctionMap[functionID]; }
 	inline std::vector<FunctionParameter>& GetFunctionParameters(ID functionID) { return m_FunctionMap[functionID]->parameters; }
@@ -108,8 +73,16 @@ public:
 	ID AddInstantiationCommand(TemplateInstantiationCommand* command);
 	int32 InstantiateTemplateGetIndex(Program* program, const std::string& templateTypeName);
 
+	bool InheritsFrom(uint16 type) const;
+
 	inline bool HasDestructor() const { return m_Destructor != nullptr; }
 	inline bool HasCopyConstructor() const { return m_CopyConstructor != nullptr; }
+	inline bool HasAssignSTFunction() const { return m_AssignSTFunction != nullptr; }
+	inline bool HasBaseClass() const { return m_BaseClass != nullptr; }
+
+	inline VTable* GetVTable() const { return m_VTable; }
+
+	void BuildVTable();
 private:
 	void ExecuteInstantiationCommands(Program* program, const TemplateInstantiation& instantiation);
 	uint32 ExecuteInstantiationCommand(Program* program, TemplateInstantiationCommand* command, const TemplateInstantiation& instantiation, ID generatedID);
@@ -121,6 +94,8 @@ private:
 	ID m_ScopeID;
 	uint64 m_Size;
 
+	Class* m_BaseClass;
+
 	std::unordered_map<std::string, std::vector<Function*>> m_Functions;
 	std::unordered_map<std::string, uint32> m_FunctionDefinitionMap;
 	std::vector<Function*> m_FunctionMap; //FunctionID is the index
@@ -128,6 +103,7 @@ private:
 
 	Function* m_Destructor;
 	Function* m_CopyConstructor;
+	Function* m_AssignSTFunction;
 
 	std::vector<ClassField> m_StaticFields;
 	std::vector<ClassField> m_MemberFields;
@@ -135,4 +111,6 @@ private:
 	TemplateDefinition m_TemplateDefinition;
 	bool m_IsTemplateInstance;
 	std::vector<std::pair<TemplateInstantiationCommand*, ID>> m_InstantiationCommands;
+
+	VTable* m_VTable;
 };

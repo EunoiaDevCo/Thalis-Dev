@@ -59,9 +59,13 @@ ID Scope::GetVariableID(const std::string& name, bool makeID)
 	}
 }
 
-void Scope::DeclareVariable(ID variableID, const TypeInfo& typeInfo, const std::string& templateTypeName)
+void Scope::DeclareVariable(ID variableID, const TypeInfo& typeInfo, const std::string& templateTypeName, uint16 derivedType)
 {
-	m_VariableTypes[variableID] = std::make_pair(typeInfo, templateTypeName);
+	DeclaredVariable variable;
+	variable.type = typeInfo;
+	variable.templateTypeName = templateTypeName;
+	variable.derivedType = derivedType == INVALID_ID ? typeInfo.type : derivedType;
+	m_VariableTypes[variableID] = variable;
 }
 
 TypeInfo Scope::GetVariableTypeInfo(ID variableID)
@@ -73,7 +77,21 @@ TypeInfo Scope::GetVariableTypeInfo(ID variableID)
 	}
 
 	if (it == m_VariableTypes.end()) return TypeInfo(INVALID_ID, 0);
-	return it->second.first;
+	return it->second.type;
+}
+
+TypeInfo Scope::GetVariableDerivedTypeInfo(ID variableID)
+{
+	const auto&& it = m_VariableTypes.find(variableID);
+	if (it == m_VariableTypes.end())
+	{
+		if (m_Parent) return m_Parent->GetVariableDerivedTypeInfo(variableID);
+	}
+
+	if (it == m_VariableTypes.end()) return TypeInfo(INVALID_ID, 0);
+	TypeInfo typeInfo = it->second.type;
+	typeInfo.type = it->second.derivedType;
+	return typeInfo;
 }
 
 static void AddDestructorRecursive(Program* program, const Value& value, uint32 offset = 0)

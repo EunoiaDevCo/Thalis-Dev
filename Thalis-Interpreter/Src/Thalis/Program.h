@@ -41,13 +41,13 @@ enum class OpCode : uint16
 
 	POP, DUP, SWAP,
 
-	ADD, SUBTRACT, MULTIPLY, DIVIDE,
+	ADD, SUBTRACT, MULTIPLY, DIVIDE, MOD,
 	LESS, GREATER, LESS_EQUAL, GREATER_EQUAL, EQUALS, NOT_EQUALS,
 	UNARY_UPDATE,
 
 	MODULE_CONSTANT, RETURN,
 	MODULE_FUNCTION_CALL, STATIC_FUNCTION_CALL, MEMBER_FUNCTION_CALL,
-	CONSTRUCTOR_CALL,
+	CONSTRUCTOR_CALL, VIRTUAL_FUNCTION_CALL,
 
 	END
 
@@ -120,6 +120,7 @@ public:
 	void AddModuleConstantCommand(ID moduleID, uint16 constant);
 	void AddStaticFunctionCallCommand(ID classID, uint16 functionID, bool usesReturnValue);
 	void AddMemberFunctionCallCommand(ID classID, uint16 functionID, bool usesReturnValue);
+	void AddVirtualFunctionCallCommand(uint16 functionID, bool usesReturnValue);
 
 	void AddDirectMemberAccessCommand(uint64 offset, uint16 memberType, uint8 memberPointerLevel);
 	void AddDirectMemberAssignCommand(uint64 offset, uint16 memberType, uint8 memberPointerLevel, uint64 memberTypeSize, uint16 assignFunctionID);
@@ -132,6 +133,12 @@ public:
 	void AddPopLoopCommand();
 	void AddNewCommand(uint16 type, uint16 functionID);
 	void AddIndexAssignCommand(uint16 assignFunctionID);
+
+	void AddAddCommand(uint16 functionID);
+	void AddSubCommand(uint16 functionID);
+	void AddMulCommand(uint16 functionID);
+	void AddDivCommand(uint16 functionID);
+	void AddModCommand(uint16 functionID);
 
 	uint32 GetCodeSize() const;
 	uint32 GetStackSize() const;
@@ -176,6 +183,7 @@ public:
 	void AddCreatedExpression(ASTExpression* expression);
 	bool Resolve();
 	void EmitCode();
+	void BuildVTables();
 
 	void InitStatics();
 
@@ -194,6 +202,7 @@ private:
 	void AddCopyConstructorRecursive(const Value& dst, const Value& src, uint64 offset = 0);
 	void ExecutePendingCopyConstructors(uint32 offset = 0);
 	void ExecuteAssignFunction(const Value& thisValue, const Value& assignValue, Function* assignFunction);
+	void ExecuteArithmaticFunction(const Value& lhs, const Value& rhs, Function* function);
 
 	uint64 ReadUInt64();
 	uint32 ReadUInt32();

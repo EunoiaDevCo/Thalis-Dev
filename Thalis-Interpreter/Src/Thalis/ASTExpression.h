@@ -90,13 +90,15 @@ struct ASTExpressionBinary : public ASTExpression
 	ASTExpression* lhs;
 	ASTExpression* rhs;
 	ASTOperator op;
+	uint16 aritmaticFunctionID;
 
 	ASTExpressionBinary(ID scope, ASTExpression* lhs, ASTExpression* rhs, ASTOperator op) :
-		ASTExpression(scope), lhs(lhs), rhs(rhs), op(op) { }
+		ASTExpression(scope), lhs(lhs), rhs(rhs), op(op), aritmaticFunctionID(INVALID_ID) { }
 
 	virtual void EmitCode(Program* program) override;
 	virtual TypeInfo GetTypeInfo(Program* program) override;
 	virtual ASTExpression* InjectTemplateType(Program* program, Class* cls, ID newScope, const TemplateInstantiation& instantiation, Class* templatedClass) override;
+	virtual bool Resolve(Program* program) override;
 };
 
 struct ASTExpressionDeclare : public ASTExpression
@@ -503,5 +505,21 @@ struct ASTExpressionDelete : public ASTExpression
 
 	virtual void EmitCode(Program* program) override;
 	virtual TypeInfo GetTypeInfo(Program* program) override;
+	virtual ASTExpression* InjectTemplateType(Program* program, Class* cls, ID newScope, const TemplateInstantiation& instantiation, Class* templatedClass) override;
+};
+
+struct ASTExpressionVirtualFunctionCall : public ASTExpression
+{
+	ASTExpression* objExpr;
+	std::string functionName;
+	std::vector<ASTExpression*> argExprs;
+	uint16 virtualFunctionID;
+
+	ASTExpressionVirtualFunctionCall(ID scope, ASTExpression* objExpr, const std::string& functionName, const std::vector<ASTExpression*>& argExprs) :
+		ASTExpression(scope), objExpr(objExpr), functionName(functionName), argExprs(argExprs), virtualFunctionID(INVALID_ID) { }
+
+	virtual void EmitCode(Program* program) override;
+	virtual TypeInfo GetTypeInfo(Program* program) override;
+	virtual bool Resolve(Program* program) override;
 	virtual ASTExpression* InjectTemplateType(Program* program, Class* cls, ID newScope, const TemplateInstantiation& instantiation, Class* templatedClass) override;
 };

@@ -50,6 +50,7 @@ void Parser::Parse(const std::string& path)
 
 	free(contents);
 
+	m_Program->BuildVTables();
 	m_Program->Resolve();
 	m_Program->EmitCode();
 }
@@ -110,6 +111,7 @@ bool Parser::ParseClass(Tokenizer* tokenizer)
 
 	TemplateDefinition templateDefinition;
 	Token arrowToken = tokenizer->PeekToken();
+	Class* baseClass = nullptr;
 	while (arrowToken.type == TokenTypeT::ARROW)
 	{
 		tokenizer->Expect(TokenTypeT::ARROW);
@@ -153,7 +155,15 @@ bool Parser::ParseClass(Tokenizer* tokenizer)
 		}
 		else if (classExtensionToken.type == TokenTypeT::INHERIT)
 		{
+			if (tokenizer->Expect(TokenTypeT::OPEN_BRACKET)) return false;
+			Token inheritToken;
+			if (tokenizer->Expect(TokenTypeT::IDENTIFIER, &inheritToken)) return false;
+			std::string inheritClassName(inheritToken.text, inheritToken.length);
 
+			baseClass = m_Program->GetClass(m_Program->GetClassID(inheritClassName));
+
+			Token closeBracket = tokenizer->GetToken();
+			if (closeBracket.type != TokenTypeT::CLOSE_BRACKET) return false;
 		}
 
 		arrowToken = tokenizer->PeekToken();
@@ -164,9 +174,9 @@ bool Parser::ParseClass(Tokenizer* tokenizer)
 
 	ID classScope = m_Program->CreateScope();
 
-	Class* cls = new Class(className, classScope);
+	Class* cls = new Class(className, classScope, baseClass);
 	g_CurrentClassName = className;
-	m_Program->AddClass(className, cls);
+	ID classID = m_Program->AddClass(className, cls);
 	cls->SetTemplateDefinition(templateDefinition);
 
 	//------------------------------------------------------------
@@ -213,6 +223,40 @@ bool Parser::ParseClass(Tokenizer* tokenizer)
 
 		//SkipStatement(tokenizer);
 		return false;
+	}
+
+	if (!cls->HasAssignSTFunction())
+	{
+		Function* function = new Function();
+		function->accessModifier = AccessModifier::PUBLIC;
+		function->isStatic = false;
+		function->isVirtual = false;
+		function->name = "operator=";
+		function->returnInfo = TypeInfo((uint16)ValueType::VOID_T, 0);
+		function->scope = m_Program->CreateScope(classScope);
+		
+		FunctionParameter parameter;
+		parameter.isReference = true;
+		parameter.type = TypeInfo(classID, 0);
+		
+		std::string paramName = "#TLS_Other";
+		Scope* scope = m_Program->GetScope(function->scope);
+		ID variableID = scope->GetVariableID(paramName, true);
+		scope->DeclareVariable(variableID, TypeInfo(classID, 0));
+
+		parameter.variableID = variableID;
+		function->parameters.push_back(parameter);
+
+		const std::vector<ClassField>& members = cls->GetMemberFields();
+		for (uint32 i = 0; i < members.size(); i++)
+		{
+			const ClassField& member = members[i];
+			ASTExpressionVariable* variableExpr = new ASTExpressionVariable(function->scope, parameter.variableID);
+			ASTExpressionDirectMemberAccess* memberAssignExpr = new ASTExpressionDirectMemberAccess(function->scope, member.type, member.offset, variableExpr);
+			function->body.push_back(memberAssignExpr);
+		}
+
+		cls->AddFunction(function);
 	}
 
 	return true;
@@ -316,6 +360,26 @@ bool Parser::ParseFunction(Tokenizer* tokenizer, Class* cls, ID parentScope)
 			if (t.type == TokenTypeT::EQUALS)
 			{
 				function->name = "operator=";
+			}
+			else if (t.type == TokenTypeT::PLUS)
+			{
+				function->name = "operator+";
+			}
+			else if (t.type == TokenTypeT::MINUS)
+			{
+				function->name = "operator-";
+			}
+			else if (t.type == TokenTypeT::ASTERISK)
+			{
+				function->name = "operator*";
+			}
+			else if (t.type == TokenTypeT::SLASH)
+			{
+				function->name = "operator/";
+			}
+			else if (t.type == TokenTypeT::MOD)
+			{
+				function->name = "operator%";
 			}
 		}
 		else if (t.type == TokenTypeT::IDENTIFIER)
@@ -661,7 +725,13 @@ bool Parser::ParseStatement(Function* function, Tokenizer* tokenizer, ID current
 				return false;
 			}
 
-			m_Program->GetScope(currentScope)->DeclareVariable(variableID, TypeInfo(type, pointerLevel));
+			uint16 derivedType = type;
+			if (assignExpr)
+			{
+				derivedType = assignExpr->GetTypeInfo(m_Program).type;
+			}
+
+			m_Program->GetScope(currentScope)->DeclareVariable(variableID, TypeInfo(type, pointerLevel), "", derivedType);
 			ASTExpressionDeclarePointer* declarePointer = new ASTExpressionDeclarePointer(currentScope, variableID, type, pointerLevel, assignExpr);
 			function->body.push_back(declarePointer);
 			return true;
@@ -1625,7 +1695,7 @@ ASTExpression* Parser::ParsePrimary(Tokenizer* tokenizer, ID currentScope)
 						}
 					}
 
-					TypeInfo variableTypeInfo = scope->GetVariableTypeInfo(variableID);
+					TypeInfo variableTypeInfo = scope->GetVariableDerivedTypeInfo(variableID);
 					TypeInfo memberTypeInfo;
 					bool templatedType = false;
 					Class* cls = m_Program->GetClass(variableTypeInfo.type);
@@ -1673,9 +1743,20 @@ ASTExpression* Parser::ParsePrimary(Tokenizer* tokenizer, ID currentScope)
 							updatedMembers.pop_back();
 							bool templatedType = false;
 							offset = m_Program->GetClass(variableTypeInfo.type)->CalculateOffset(updatedMembers, &memberTypeInfo, &templatedType);
+
+							Class* cls = m_Program->GetClass(memberTypeInfo.type);
+							uint16 functionID = cls->GetFunctionID(functionName, argExprs);
+
 							ASTExpressionMemberAccess* memberAccessExpr = new ASTExpressionMemberAccess(currentScope, variableID, offset, memberTypeInfo.type, memberTypeInfo.pointerLevel, indexExpr);
 							if (templatedType)
 								memberAccessExpr->members = updatedMembers;
+
+							if (cls->GetFunction(functionID)->isVirtual)
+							{
+								ASTExpressionVirtualFunctionCall* virtualFunctionCall = new ASTExpressionVirtualFunctionCall(currentScope, memberAccessExpr, functionName, argExprs);
+								return virtualFunctionCall;
+							}
+
 							ASTExpressionMemberFunctionCall* memberFunctionCall = new ASTExpressionMemberFunctionCall(currentScope, memberAccessExpr, functionName, argExprs);
 							return memberFunctionCall;
 						}
@@ -1783,7 +1864,7 @@ ASTExpression* Parser::ParsePrimary(Tokenizer* tokenizer, ID currentScope)
 					}
 					else
 					{
-						TypeInfo variableTypeInfo = m_Program->GetScope(currentScope)->GetVariableTypeInfo(variableID);
+						TypeInfo variableTypeInfo = m_Program->GetScope(currentScope)->GetVariableDerivedTypeInfo(variableID);
 						TypeInfo memberTypeInfo;
 						bool templatedType = false;
 						uint64 offset = m_Program->GetClass(variableTypeInfo.type)->CalculateOffset(members, &memberTypeInfo, &templatedType);
@@ -1792,6 +1873,15 @@ ASTExpression* Parser::ParsePrimary(Tokenizer* tokenizer, ID currentScope)
 						if (templatedType)
 							((ASTExpressionMemberAccess*)objExpr)->members = members;
 					}
+				}
+
+				Class* cls = m_Program->GetClass(objExpr->GetTypeInfo(m_Program).type);
+				uint16 functionID = cls->GetFunctionID(functionName, expressions);
+				Function* function = cls->GetFunction(functionID);
+				if (function->isVirtual)
+				{
+					ASTExpressionVirtualFunctionCall* virtualFunctionCall = new ASTExpressionVirtualFunctionCall(currentScope, objExpr, functionName, expressions);
+					return virtualFunctionCall;
 				}
 
 				ASTExpressionMemberFunctionCall* functionCallExpr = new ASTExpressionMemberFunctionCall(currentScope, objExpr, functionName, expressions);
@@ -1874,7 +1964,7 @@ ASTExpression* Parser::ParsePrimary(Tokenizer* tokenizer, ID currentScope)
 					}
 					else
 					{
-						uint64 variableType = m_Program->GetScope(currentScope)->GetVariableTypeInfo(variableID).type;
+						uint64 variableType = m_Program->GetScope(currentScope)->GetVariableDerivedTypeInfo(variableID).type;
 						TypeInfo memberTypeInfo;
 						bool templatedType = false;
 						uint64 offset = m_Program->GetClass(variableType)->CalculateOffset(identifiers, &memberTypeInfo, &templatedType);
@@ -1883,13 +1973,22 @@ ASTExpression* Parser::ParsePrimary(Tokenizer* tokenizer, ID currentScope)
 							((ASTExpressionMemberAccess*)objExpr)->members = identifiers;
 					}
 
+					Class* cls = m_Program->GetClass(objExpr->GetTypeInfo(m_Program).type);
+					uint16 functionID = cls->GetFunctionID(functionName, argExprs);
+					Function* function = cls->GetFunction(functionID);
+					if (function->isVirtual)
+					{
+						ASTExpressionVirtualFunctionCall* virtualFunctionCall = new ASTExpressionVirtualFunctionCall(currentScope, objExpr, functionName, argExprs);
+						return virtualFunctionCall;
+					}
+
 					ASTExpressionMemberFunctionCall* memberFunctionCallExpr = new ASTExpressionMemberFunctionCall(currentScope, objExpr, functionName, argExprs);
 					return memberFunctionCallExpr;
 				}
 
 				std::string variableName(t.text, t.length);
 				ID variableID = m_Program->GetScope(currentScope)->GetVariableID(variableName, false);
-				uint64 variableType = m_Program->GetScope(currentScope)->GetVariableTypeInfo(variableID).type;
+				uint64 variableType = m_Program->GetScope(currentScope)->GetVariableDerivedTypeInfo(variableID).type;
 				TypeInfo memberTypeInfo;
 				bool templatedType = false;
 				uint64 offset = m_Program->GetClass(variableType)->CalculateOffset(identifiers, &memberTypeInfo, &templatedType);

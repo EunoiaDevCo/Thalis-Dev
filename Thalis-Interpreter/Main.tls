@@ -39,8 +39,38 @@ class Vec2
 		IO.Println("Called Vec2::operator=(Vec2&)");
 	}
 
+	public Vec2 operator+(Vec2& vec)
+	{
+		return Vec2(x + vec.x, y + vec.y);
+	}
+
+	public Vec2 operator-(Vec2& vec)
+	{
+		return Vec2(x - vec.x, y - vec.y);
+	}
+
 	public real32 x;
 	public real32 y;
+};
+
+class Application
+{
+	public virtual void DoSomething()
+	{
+		avec.Print();
+	}
+
+	public Vec2 avec;
+};
+
+class Game -> inherit[Application]
+{
+	public virtual void DoSomething()
+	{
+		gvec.Print();
+	}
+
+	public Vec2 gvec;
 };
 
 class Main
@@ -48,10 +78,13 @@ class Main
 
 	public static void Main()
 	{
-		Vec2 v1(10.0, 10.0);
-		Vec2 v2(20.0, 20.0);
-		v1 = v2;
+		Application* app = new Game();
 
-		v1.Print();
+		app.avec = Vec2(10.0, 10.0);
+		app.gvec = Vec2(20.0, 20.0);
+
+		app.DoSomething();
+
+		delete app;
 	}
 };

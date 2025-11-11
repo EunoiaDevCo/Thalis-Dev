@@ -1,5 +1,7 @@
 #include "Value.h"
 #include "Program.h"
+#include "Class.h"
+#include "VTable.h"
 
 Value Value::CastTo(Program* program, uint16 newType, uint8 pointerLevel, Allocator* allocator) const
 {
@@ -157,19 +159,34 @@ Value Value::Clone(Program* program, Allocator* allocator)
 Value Value::MakeArray(Program* program, uint16 type, uint8 pointerLevel, uint32 length, Allocator* allocator)
 {
 	uint64 typeSize = pointerLevel == 0 ? program->GetTypeSize(type) : sizeof(void*);
+	typeSize += sizeof(VTable*);
 	
 	ArrayHeader header;
 	header.elementPointerLevel = pointerLevel;
 	header.length = length;
 
 	uint64 arraySize = typeSize * length + sizeof(ArrayHeader);
-	void* arrayData = allocator->Alloc(arraySize);
+	uint8* arrayData = (uint8*)allocator->Alloc(arraySize);
 	memcpy(arrayData, &header, sizeof(ArrayHeader));
+
+	uint8* elements = arrayData + sizeof(ArrayHeader);
+
+	if (pointerLevel == 0 && !IsPrimitiveType(type))
+	{
+		Class* cls = program->GetClass(type);
+		VTable* vtable = cls->GetVTable();
+
+		for (uint32 i = 0; i < length; i++)
+		{
+			uint8* elementBase = elements + i * typeSize;
+			*(VTable**)elementBase = vtable;
+		}
+	}
 
 	Value value;
 	value.type = type;
-	value.pointerLevel = 1;
-	value.data = (uint8*)arrayData + sizeof(ArrayHeader); 
+	value.pointerLevel = 1 + pointerLevel;
+	value.data = elements; 
 	value.isArray = true;
 
 	return value;
@@ -177,13 +194,35 @@ Value Value::MakeArray(Program* program, uint16 type, uint8 pointerLevel, uint32
 
 Value Value::MakeObject(Program* program, uint16 type, Allocator* allocator)
 {
+	Class* cls = program->GetClass(type);
+	uint64 typeSize = program->GetTypeSize(type);
+
+	// Allocate enough for vtable pointer + object data
+	uint64 totalSize = sizeof(VTable*) + typeSize;
+	uint8* memory = (uint8*)allocator->Alloc(totalSize);
+
+	// Initialize the vtable pointer to this class’s vtable
+	*(VTable**)memory = cls->GetVTable(); // pointer to the class’s vtable
+
+	// Create Value object
+	Value value;
+	value.type = type;
+	value.pointerLevel = 0;
+	value.data = memory + sizeof(VTable*); // point *after* the vtable pointer
+	value.isArray = false;
+
+	return value;
+}
+
+/*Value Value::MakeObject(Program* program, uint16 type, Allocator* allocator)
+{
 	uint64 typeSize = program->GetTypeSize(type);
 
 	Value value;
 	value.type = type;
 	value.pointerLevel = 0;
-	value.data = allocator->Alloc(typeSize);
+	value.data = allocator->Alloc(typeSize + sizeof(VTable*));
 	value.isArray = false;
 
 	return value;
-}
+}*/

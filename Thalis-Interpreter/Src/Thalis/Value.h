@@ -407,6 +407,44 @@ struct Value
 		return Value::MakeInt64(GetInt64() / rhs.GetInt64(), allocator);
 	}
 
+	inline Value Mod(const Value& rhs, Allocator* allocator)
+	{
+		if (IsReal() || rhs.IsReal())
+		{
+			return Value::MakeNULL();
+		}
+
+		Value result;
+		// Integer arithmetic
+		if (IsInteger() && rhs.IsInteger())
+		{
+			uint32 lhsBits = GetBitWidth();
+			uint32 rhsBits = rhs.GetBitWidth();
+			uint32 maxBits = std::max(lhsBits, rhsBits);
+
+			bool lhsSigned = IsSigned();
+			bool rhsSigned = rhs.IsSigned();
+
+			if (lhsSigned || rhsSigned) // signed dominates
+			{
+				if (maxBits <= 8)  return Value::MakeInt8((int8)(GetInt64() % rhs.GetInt64()), allocator);
+				if (maxBits <= 16) return Value::MakeInt16((int16)(GetInt64() % rhs.GetInt64()), allocator);
+				if (maxBits <= 32) return Value::MakeInt32((int32)(GetInt64() % rhs.GetInt64()), allocator);
+				return Value::MakeInt64(GetInt64() / rhs.GetInt64(), allocator);
+			}
+			else // unsigned
+			{
+				if (maxBits <= 8)  return Value::MakeUInt8((uint8)(GetUInt64() % rhs.GetUInt64()), allocator);
+				if (maxBits <= 16) return Value::MakeUInt16((uint16)(GetUInt64() % rhs.GetUInt64()), allocator);
+				if (maxBits <= 32) return Value::MakeUInt32((uint32)(GetUInt64() % rhs.GetUInt64()), allocator);
+				return Value::MakeUInt64(GetUInt64() % rhs.GetUInt64(), allocator);
+			}
+		}
+
+		// fallback
+		return Value::MakeInt64(GetInt64() % rhs.GetInt64(), allocator);
+	}
+
 	inline Value LessThan(const Value& rhs, Allocator* allocator)
 	{
 		// both ints (any signedness)

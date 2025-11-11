@@ -29,6 +29,15 @@ void Class::AddFunction(Function* function)
 			m_CopyConstructor = function;
 		}
 	}
+
+	if ((function->name == "operator=") && (function->parameters.size() == 1))
+	{
+		if ((function->parameters[0].type.pointerLevel == 0) &&
+			(function->parameters[0].type.type == m_ID))
+		{
+			m_AssignSTFunction = function;
+		}
+	}
 }
 
 void Class::AddStaticField(Program* program, uint16 type, uint8 pointerLevel, uint32 arrayLength, uint64 size, const std::string& name, ASTExpression* initializeExpr)
@@ -49,6 +58,9 @@ void Class::AddStaticField(Program* program, uint16 type, uint8 pointerLevel, ui
 
 void Class::AddMemberField(uint16 type, uint8 pointerLevel, uint32 arrayLength, uint64 size, uint64 offset, const std::string& name, const std::string& templateTypeName)
 {
+	if (HasBaseClass())
+		offset += m_BaseClass->GetSize();
+
 	ClassField field;
 	field.type.type = type;
 	field.type.pointerLevel = arrayLength > 0 ? 1 : pointerLevel;
@@ -61,17 +73,6 @@ void Class::AddMemberField(uint16 type, uint8 pointerLevel, uint32 arrayLength, 
 	field.templateTypeName = templateTypeName;
 
 	m_MemberFields.push_back(field);
-}
-
-ClassField Class::GetMemberFieldByOffset(uint64 offset) const
-{
-	for (uint32 i = 0; i < m_MemberFields.size(); i++)
-	{
-		if (m_MemberFields[i].offset == offset)
-			return m_MemberFields[i];
-	}
-
-	return ClassField();
 }
 
 static int32 GetConversionScore(Program* program, const TypeInfo& from, const TypeInfo& to)
@@ -281,6 +282,15 @@ uint64 Class::CalculateOffset(const std::vector<std::string>& members, TypeInfo*
 				return subClass->CalculateOffset(members, memberTypeInfo, isTemplated, i + 1, memberOffset);
 			}
 		}
+
+		if (HasBaseClass())
+		{
+			uint64 baseOffset = currentOffset; // Base data always starts at 0 offset for the derived object
+			uint64 result = m_BaseClass->CalculateOffset(members, memberTypeInfo, isTemplated, currentMember, baseOffset);
+
+			if (result != UINT64_MAX)
+				return result; // Found in base class
+		}
 	}
 
 	// No member found
@@ -355,6 +365,44 @@ ID Class::AddInstantiationCommand(TemplateInstantiationCommand* command)
 	return id;
 }
 
+void Class::BuildVTable()
+{
+	VTable* vtable = new VTable();
+
+	if (HasBaseClass())
+		*vtable = *m_BaseClass->GetVTable();
+
+	for (uint32 i = 0; i < m_FunctionMap.size(); i++)
+	{
+		Function* function = m_FunctionMap[i];
+		if (!function->isVirtual)
+			continue;
+
+		int32 overrideIndex = -1;
+		if (HasBaseClass())
+		{
+			std::vector<TypeInfo> parameters;
+			for (uint32 j = 0; j < function->parameters.size(); j++)
+				parameters.push_back(function->parameters[j].type);
+
+			overrideIndex = m_BaseClass->GetVTable()->FindSlot(function->name, parameters);
+		}
+
+		if (overrideIndex >= 0)
+		{
+			// Replace base function
+			vtable->functions[overrideIndex] = function;
+		}
+		else
+		{
+			// New virtual entry
+			vtable->functions.push_back(function);
+		}
+	}
+
+	m_VTable = vtable;
+}
+
 void Class::ExecuteInstantiationCommands(Program* program, const TemplateInstantiation& instantiation)
 {
 	for (uint32 i = 0; i < m_InstantiationCommands.size(); i++)
@@ -423,11 +471,22 @@ int32 Class::InstantiateTemplateGetIndex(Program* program, const std::string& te
 	return -1;
 }
 
+bool Class::InheritsFrom(uint16 type) const
+{
+	if (HasBaseClass())
+	{
+		if (m_BaseClass->m_ID == type) return true;
+		return m_BaseClass->InheritsFrom(type);
+	}
+
+	return false;
+}
+
 Function* Class::InstantiateTemplateInjectFunction(Program* program, Function* templatedFunction, ID templatedTypeID,
 	const std::string& templatedTypeName, const TemplateInstantiation& instantiation, Class* templatedClass)
 {
 	Scope* scope = program->GetScope(templatedFunction->scope);
-	const std::unordered_map<ID, std::pair<TypeInfo, std::string>>& declaredVariables = scope->GetDeclaredVariables();
+	const std::unordered_map<ID, DeclaredVariable>& declaredVariables = scope->GetDeclaredVariables();
 
 	Function* injectedFunction = new Function();
 	injectedFunction->accessModifier = templatedFunction->accessModifier;
@@ -448,10 +507,10 @@ Function* Class::InstantiateTemplateInjectFunction(Program* program, Function* t
 	for (const auto& it : declaredVariables)
 	{
 		ID variableID = it.first;
-		TypeInfo typeInfo = it.second.first;
+		TypeInfo typeInfo = it.second.type;
 		if (typeInfo.type == (uint16)ValueType::TEMPLATE_TYPE)
 		{
-			std::string templateTypeName = it.second.second;
+			std::string templateTypeName = it.second.templateTypeName;
 			uint32 index = InstantiateTemplateGetIndex(program, templateTypeName);
 			typeInfo.type = instantiation.args[index].value;
 		}
@@ -542,47 +601,6 @@ std::string Class::GenerateTemplateClassName(Program* program, const std::string
 	name += ">";
 
 	return name;
-}
-
-std::string Function::GenerateSignature() const
-{
-	Program* program = Program::GetCompiledProgram();
-
-	std::string signature = name + "-";
-
-	for (uint32 i = 0; i < parameters.size(); i++)
-	{
-		const FunctionParameter& param = parameters[i];
-		std::string typeString = program->GetTypeName(param.type.type);
-		if (param.type.pointerLevel > 0)
-			typeString += std::to_string(param.type.pointerLevel);
-
-		signature += typeString;
-		if (i + 1 < parameters.size())
-			signature += "_";
-	}
-
-	return signature;
-}
-
-std::string Function::GenerateSignatureFromArgs(Program* program, const std::string& name, const std::vector<ASTExpression*>& args)
-{
-	std::string signature = name + "-";
-
-	for (uint32 i = 0; i < args.size(); i++)
-	{
-		TypeInfo typeInfo = args[i]->GetTypeInfo(program);
-		std::string typeName = program->GetTypeName(typeInfo.type);
-
-		if (typeInfo.pointerLevel > 0)
-			typeName += std::to_string(typeInfo.pointerLevel);
-
-		signature += typeName;
-		if (i + 1 < args.size())
-			signature += "_";
-	}
-
-	return signature;
 }
 
 bool TemplateInstantiation::HasTemplatedType() const

@@ -18,6 +18,7 @@
     <ClInclude Include="Src\Thalis\ASTExpression.h" />
     <ClInclude Include="Src\Thalis\Class.h" />
     <ClInclude Include="Src\Thalis\Common.h" />
+    <ClInclude Include="Src\Thalis\Function.h" />
     <ClInclude Include="Src\Thalis\FunctionArg.h" />
     <ClInclude Include="Src\Thalis\ID.h" />
     <ClInclude Include="Src\Thalis\Memory\Allocator.h" />
@@ -33,8 +34,10 @@
     <ClInclude Include="Src\Thalis\TypeInfo.h" />
     <ClInclude Include="Src\Thalis\Tokenizer.h" />
     <ClInclude Include="Src\Thalis\Value.h" />
+    <ClInclude Include="Src\Thalis\VTable.h" />
   </ItemGroup>
   <ItemGroup>
+    <ClCompile Include="Src\Thalis\Function.cpp" />
     <ClCompile Include="Src\Thalis\Main.cpp" />
     <ClCompile Include="Src\Thalis\ASTExpression.cpp" />
     <ClCompile Include="Src\Thalis\Class.cpp" />
@@ -49,6 +52,7 @@
     <ClCompile Include="Src\Thalis\Scope.cpp" />
     <ClCompile Include="Src\Thalis\Tokenizer.cpp" />
     <ClCompile Include="Src\Thalis\Value.cpp" />
+    <ClCompile Include="Src\Thalis\VTable.cpp" />
   </ItemGroup>
   <ItemGroup>
     <None Include="Main.tls" />

@@ -111,15 +111,18 @@ ASTExpression* ASTExpressionModuleConstant::InjectTemplateType(Program* program,
 
 void ASTExpressionBinary::EmitCode(Program* program)
 {
+	if (isStatement) return;
+
 	lhs->EmitCode(program);
 	rhs->EmitCode(program);
 
 	switch (op)
 	{
-	case ASTOperator::ADD: program->WriteOPCode(OpCode::ADD); break;
-	case ASTOperator::MINUS: program->WriteOPCode(OpCode::SUBTRACT); break;
-	case ASTOperator::MULTIPLY: program->WriteOPCode(OpCode::MULTIPLY); break;
-	case ASTOperator::DIVIDE: program->WriteOPCode(OpCode::DIVIDE); break;
+	case ASTOperator::ADD: program->AddAddCommand(aritmaticFunctionID); break;
+	case ASTOperator::MINUS: program->AddSubCommand(aritmaticFunctionID); break;
+	case ASTOperator::MULTIPLY: program->AddMulCommand(aritmaticFunctionID); break;
+	case ASTOperator::DIVIDE: program->AddDivCommand(aritmaticFunctionID); break;
+	case ASTOperator::MOD: program->AddModCommand(aritmaticFunctionID); break;
 	case ASTOperator::LESS: program->WriteOPCode(OpCode::LESS); break;
 	case ASTOperator::GREATER: program->WriteOPCode(OpCode::GREATER); break;
 	case ASTOperator::LESS_EQUALS: program->WriteOPCode(OpCode::LESS_EQUAL); break;
@@ -143,6 +146,25 @@ ASTExpression* ASTExpressionBinary::InjectTemplateType(Program* program, Class* 
 	ASTExpression* rhsInjected = rhs->InjectTemplateType(program, cls, newScope, instantiation, templatedClass);
 
 	return new ASTExpressionBinary(newScope, lhsInjected, rhsInjected, op);
+}
+
+bool ASTExpressionBinary::Resolve(Program* program)
+{
+	TypeInfo lhsType = lhs->GetTypeInfo(program);
+	if (Value::IsPrimitiveType(lhsType.type)) return true;
+
+	Class* cls = program->GetClass(lhsType.type);
+	std::vector<ASTExpression*> args;
+	args.push_back(rhs);
+
+	switch (op)
+	{
+	case ASTOperator::ADD:		aritmaticFunctionID = cls->GetFunctionID("operator+", args); break;
+	case ASTOperator::MINUS:	aritmaticFunctionID = cls->GetFunctionID("operator-", args); break;
+	case ASTOperator::MULTIPLY: aritmaticFunctionID = cls->GetFunctionID("operator*", args); break;
+	case ASTOperator::DIVIDE:	aritmaticFunctionID = cls->GetFunctionID("operator/", args); break;
+	case ASTOperator::MOD:		aritmaticFunctionID = cls->GetFunctionID("operator%", args); break;
+	}
 }
 
 void ASTExpressionDeclare::EmitCode(Program* program)
@@ -1034,4 +1056,47 @@ ASTExpression* ASTExpressionDelete::InjectTemplateType(Program* program, Class* 
 {
 	ASTExpression* injectedExpr = expr->InjectTemplateType(program, cls, newScope, instantiation, templatedClass);
 	return new ASTExpressionDelete(newScope, injectedExpr, deleteArray);
+}
+
+void ASTExpressionVirtualFunctionCall::EmitCode(Program* program)
+{
+	for (uint32 i = 0; i < argExprs.size(); i++)
+		argExprs[i]->EmitCode(program);
+
+	objExpr->EmitCode(program);
+	program->AddVirtualFunctionCallCommand(virtualFunctionID, !isStatement);
+}
+
+TypeInfo ASTExpressionVirtualFunctionCall::GetTypeInfo(Program* program)
+{
+	TypeInfo objTypeInfo = objExpr->GetTypeInfo(program);
+	Class* objClass = program->GetClass(objTypeInfo.type);
+	std::vector<TypeInfo> parameters;
+	for (uint32 i = 0; i < argExprs.size(); i++)
+		parameters.push_back(argExprs[i]->GetTypeInfo(program));
+
+	virtualFunctionID = objClass->GetVTable()->FindSlot(functionName, parameters);
+	return objClass->GetVTable()->GetFunction(virtualFunctionID)->returnInfo;
+}
+
+bool ASTExpressionVirtualFunctionCall::Resolve(Program* program)
+{
+	TypeInfo objTypeInfo = objExpr->GetTypeInfo(program);
+	Class* objClass = program->GetClass(objTypeInfo.type);
+	std::vector<TypeInfo> parameters;
+	for (uint32 i = 0; i < argExprs.size(); i++)
+		parameters.push_back(argExprs[i]->GetTypeInfo(program));
+
+	virtualFunctionID = objClass->GetVTable()->FindSlot(functionName, parameters);
+	return true;
+}
+
+ASTExpression* ASTExpressionVirtualFunctionCall::InjectTemplateType(Program* program, Class* cls, ID newScope, const TemplateInstantiation& instantiation, Class* templatedClass)
+{
+	ASTExpression* injectedObjExpr = objExpr->InjectTemplateType(program, cls, newScope, instantiation, templatedClass);
+	std::vector<ASTExpression*> injectedArgExprs;
+	for (uint32 i = 0; i < argExprs.size(); i++)
+		injectedArgExprs.push_back(argExprs[i]->InjectTemplateType(program, cls, newScope, instantiation, templatedClass));
+
+	return new ASTExpressionVirtualFunctionCall(newScope, injectedObjExpr, functionName, injectedArgExprs);
 }

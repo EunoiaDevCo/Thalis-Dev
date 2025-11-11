@@ -1,3 +1,4 @@
+C:\Projects\ThalisV3\Thalis-Interpreter\Src\Thalis\Function.cpp;C:\Projects\ThalisV3\Bin-Int\Debug-windows-x86_64\Thalis-Interpreter\Function.obj
 C:\Projects\ThalisV3\Thalis-Interpreter\Src\Thalis\Main.cpp;C:\Projects\ThalisV3\Bin-Int\Debug-windows-x86_64\Thalis-Interpreter\Main.obj
 C:\Projects\ThalisV3\Thalis-Interpreter\Src\Thalis\ASTExpression.cpp;C:\Projects\ThalisV3\Bin-Int\Debug-windows-x86_64\Thalis-Interpreter\ASTExpression.obj
 C:\Projects\ThalisV3\Thalis-Interpreter\Src\Thalis\Class.cpp;C:\Projects\ThalisV3\Bin-Int\Debug-windows-x86_64\Thalis-Interpreter\Class.obj
@@ -12,3 +13,4 @@ C:\Projects\ThalisV3\Thalis-Interpreter\Src\Thalis\Program.cpp;C:\Projects\Thali
 C:\Projects\ThalisV3\Thalis-Interpreter\Src\Thalis\Scope.cpp;C:\Projects\ThalisV3\Bin-Int\Debug-windows-x86_64\Thalis-Interpreter\Scope.obj
 C:\Projects\ThalisV3\Thalis-Interpreter\Src\Thalis\Tokenizer.cpp;C:\Projects\ThalisV3\Bin-Int\Debug-windows-x86_64\Thalis-Interpreter\Tokenizer.obj
 C:\Projects\ThalisV3\Thalis-Interpreter\Src\Thalis\Value.cpp;C:\Projects\ThalisV3\Bin-Int\Debug-windows-x86_64\Thalis-Interpreter\Value.obj
+C:\Projects\ThalisV3\Thalis-Interpreter\Src\Thalis\VTable.cpp;C:\Projects\ThalisV3\Bin-Int\Debug-windows-x86_64\Thalis-Interpreter\VTable.obj
