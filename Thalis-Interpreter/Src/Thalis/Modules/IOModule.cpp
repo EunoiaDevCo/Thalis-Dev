@@ -5,7 +5,7 @@ bool IOModule::Init()
 	return true;
 }
 
-Value IOModule::CallFunction(uint16 function, const std::vector<FunctionArg>& args)
+Value IOModule::CallFunction(Program* program, uint16 function, const std::vector<FunctionArg>& args)
 {
 	switch ((IOModuleFunction)function)
 	{
@@ -23,7 +23,7 @@ Value IOModule::CallFunction(uint16 function, const std::vector<FunctionArg>& ar
 	return Value::MakeNULL();
 }
 
-Value IOModule::Constant(uint16 constant)
+Value IOModule::Constant(Program* program, uint16 constant)
 {
 	return Value::MakeNULL();
 }

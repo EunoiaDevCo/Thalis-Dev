@@ -24,7 +24,8 @@ void Class::AddFunction(Function* function)
 	if ((function->name == m_Name) && (function->parameters.size() == 1))
 	{
 		if ((function->parameters[0].type.pointerLevel == 0) &&
-			(function->parameters[0].type.type == m_ID))
+			((function->parameters[0].type.type == m_ID) ||
+			 (m_GenericClass && function->parameters[0].type.type == m_GenericClass->m_ID)))
 		{
 			m_CopyConstructor = function;
 		}
@@ -86,7 +87,9 @@ static int32 GetConversionScore(Program* program, const TypeInfo& from, const Ty
 	if (!Value::IsPrimitiveType(from.type) && !Value::IsPrimitiveType(to.type))
 	{
 		Class* fromClass = program->GetClass(from.type);
-		//TODO: check for inheritance
+		Class* toClass = program->GetClass(to.type);
+		if (fromClass->HasGenericClass() && (fromClass->GetGenericClass()->GetID() == toClass->GetID()))
+			return 1;
 	}
 
 	bool fromIsInt = Value::IsIntegerType(from.type);
@@ -212,7 +215,7 @@ void Class::EmitCode(Program* program)
 		}
 		if (function->returnInfo.type == (uint16)ValueType::VOID_T)
 		{
-			program->AddReturnCommand(false);
+			program->AddReturnCommand(false, false);
 		}
 	}
 }
@@ -319,6 +322,7 @@ ID Class::InstantiateTemplate(Program* program, const TemplateInstantiation& ins
 	Class* cls = new Class(name, m_ScopeID);
 	classID = program->AddClass(name, cls, generatedID);
 	cls->m_IsTemplateInstance = true;
+	cls->m_GenericClass = this;
 
 	uint64 memberOffset = 0;
 	for (uint32 i = 0; i < m_MemberFields.size(); i++)

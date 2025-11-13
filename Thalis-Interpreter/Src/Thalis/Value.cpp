@@ -5,8 +5,6 @@
 
 Value Value::CastTo(Program* program, uint16 newType, uint8 pointerLevel, Allocator* allocator) const
 {
-	if (pointerLevel != pointerLevel) return Value::MakeNULL();
-
 	Value value;
 	value.type = newType;
 	value.pointerLevel = pointerLevel;
@@ -43,6 +41,13 @@ Value Value::CastTo(Program* program, uint16 newType, uint8 pointerLevel, Alloca
 
 void Value::Assign(const Value& value)
 {
+	if (IsPointer())
+	{
+		if (pointerLevel != value.pointerLevel)
+			return;
+
+	}
+
 	switch ((ValueType)type)
 	{
 	case ValueType::UINT8:   *(uint8*)data = value.GetUInt8(); break;
@@ -117,6 +122,40 @@ void Value::AssignMember(uint64 offset, uint16 type, uint8 pointerLevel, uint64 
 		case ValueType::REAL64:  *(real64*)((uint8*)data + offset) = value.GetReal64(); break;
 		case ValueType::BOOL:    *(bool*)((uint8*)data + offset) = value.GetBool(); break;
 		case ValueType::CHAR:    *(char*)((uint8*)data + offset) = value.GetChar(); break;
+		case ValueType::STRING: {
+			*(void**)((uint8*)data + offset) = value.data;
+		} break;
+		default: {
+			memcpy((uint8*)data + offset, value.data, typeSize);
+		}
+		}
+	}
+}
+
+void Value::AssignMemberIndex(uint64 offset, uint16 type, uint8 pointerLevel, uint64 typeSize, const Value& value)
+{
+	uint8 pl = isArray ? 0 : pointerLevel;
+	if (pl != value.pointerLevel) return;
+	if (pl > 0)
+	{
+		*(void**)((uint8*)data + offset) = value.data;
+	}
+	else
+	{
+		switch ((ValueType)type)
+		{
+		case ValueType::UINT8:   *(uint8*)(*(void**)((uint8*)data + offset)) = value.GetUInt8(); break;
+		case ValueType::UINT16:  *(uint16*)(*(void**)((uint8*)data + offset)) = value.GetUInt16(); break;
+		case ValueType::UINT32:  *(uint32*)(*(void**)((uint8*)data + offset)) = value.GetUInt32(); break;
+		case ValueType::UINT64:  *(uint64*)(*(void**)((uint8*)data + offset)) = value.GetUInt64(); break;
+		case ValueType::INT8:    *(int8*)(*(void**)((uint8*)data + offset)) = value.GetInt8(); break;
+		case ValueType::INT16:   *(int16*)(*(void**)((uint8*)data + offset)) = value.GetInt16(); break;
+		case ValueType::INT32:   *(int32*)(*(void**)((uint8*)data + offset)) = value.GetInt32(); break;
+		case ValueType::INT64:   *(int64*)(*(void**)((uint8*)data + offset)) = value.GetInt64(); break;
+		case ValueType::REAL32:  *(real32*)(*(void**)((uint8*)data + offset)) = value.GetReal32(); break;
+		case ValueType::REAL64:  *(real64*)(*(void**)((uint8*)data + offset)) = value.GetReal64(); break;
+		case ValueType::BOOL:    *(bool*)(*(void**)((uint8*)data + offset)) = value.GetBool(); break;
+		case ValueType::CHAR:    *(char*)(*(void**)((uint8*)data + offset)) = value.GetBool(); break;
 		case ValueType::STRING: {
 			*(void**)((uint8*)data + offset) = value.data;
 		} break;

@@ -35,5 +35,8 @@ private:
 	TemplateInstantiation ParseTemplateInstantiation(Tokenizer* tokenizer, Class* cls, TemplateInstantiationCommand* command, bool* templatedType);
 	uint32 AddTemplateInstantiationType(const std::string& baseName, const TemplateInstantiation& nested);
 private:
+	bool WasFileAlreadyParsed(const std::string& file);
+private:
 	Program* m_Program;
+	std::vector<std::string> m_ParsedFiles;
 };

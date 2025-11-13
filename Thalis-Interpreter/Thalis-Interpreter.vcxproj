@@ -14,50 +14,6 @@
       <Platform>x64</Platform>
     </ProjectConfiguration>
   </ItemGroup>
-  <ItemGroup>
-    <ClInclude Include="Src\Thalis\ASTExpression.h" />
-    <ClInclude Include="Src\Thalis\Class.h" />
-    <ClInclude Include="Src\Thalis\Common.h" />
-    <ClInclude Include="Src\Thalis\Function.h" />
-    <ClInclude Include="Src\Thalis\FunctionArg.h" />
-    <ClInclude Include="Src\Thalis\ID.h" />
-    <ClInclude Include="Src\Thalis\Memory\Allocator.h" />
-    <ClInclude Include="Src\Thalis\Memory\BumpAllocator.h" />
-    <ClInclude Include="Src\Thalis\Memory\HeapAllocator.h" />
-    <ClInclude Include="Src\Thalis\Memory\Memory.h" />
-    <ClInclude Include="Src\Thalis\Modules\IOModule.h" />
-    <ClInclude Include="Src\Thalis\Modules\ModuleID.h" />
-    <ClInclude Include="Src\Thalis\Parser.h" />
-    <ClInclude Include="Src\Thalis\Program.h" />
-    <ClInclude Include="Src\Thalis\Scope.h" />
-    <ClInclude Include="Src\Thalis\Template.h" />
-    <ClInclude Include="Src\Thalis\TypeInfo.h" />
-    <ClInclude Include="Src\Thalis\Tokenizer.h" />
-    <ClInclude Include="Src\Thalis\Value.h" />
-    <ClInclude Include="Src\Thalis\VTable.h" />
-  </ItemGroup>
-  <ItemGroup>
-    <ClCompile Include="Src\Thalis\Function.cpp" />
-    <ClCompile Include="Src\Thalis\Main.cpp" />
-    <ClCompile Include="Src\Thalis\ASTExpression.cpp" />
-    <ClCompile Include="Src\Thalis\Class.cpp" />
-    <ClCompile Include="Src\Thalis\ID.cpp" />
-    <ClCompile Include="Src\Thalis\Memory\BumpAllocator.cpp" />
-    <ClCompile Include="Src\Thalis\Memory\HeapAllocator.cpp" />
-    <ClCompile Include="Src\Thalis\Memory\Memory.cpp" />
-    <ClCompile Include="Src\Thalis\Modules\IOModule.cpp" />
-    <ClCompile Include="Src\Thalis\Modules\ModuleID.cpp" />
-    <ClCompile Include="Src\Thalis\Parser.cpp" />
-    <ClCompile Include="Src\Thalis\Program.cpp" />
-    <ClCompile Include="Src\Thalis\Scope.cpp" />
-    <ClCompile Include="Src\Thalis\Tokenizer.cpp" />
-    <ClCompile Include="Src\Thalis\Value.cpp" />
-    <ClCompile Include="Src\Thalis\VTable.cpp" />
-  </ItemGroup>
-  <ItemGroup>
-    <None Include="Main.tls" />
-    <None Include="Test.tls" />
-  </ItemGroup>
   <PropertyGroup Label="Globals">
     <ProjectGuid>{2BA9D34F-178D-94A5-80ED-8EF86CF07E27}</ProjectGuid>
     <IgnoreWarnCompileDuplicatedFilename>true</IgnoreWarnCompileDuplicatedFilename>
@@ -143,6 +99,7 @@
       <WarningLevel>Level3</WarningLevel>
       <PreprocessorDefinitions>GLEW_STATIC;TLS_PLATFORM_WINDOWS;TLS_RELEASE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <AdditionalIncludeDirectories>Libs\GLEW\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <DebugInformationFormat>ProgramDatabase</DebugInformationFormat>
       <Optimization>Full</Optimization>
       <FunctionLevelLinking>true</FunctionLevelLinking>
       <IntrinsicFunctions>true</IntrinsicFunctions>
@@ -155,6 +112,7 @@
     </ClCompile>
     <Link>
       <SubSystem>Console</SubSystem>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
       <EnableCOMDATFolding>true</EnableCOMDATFolding>
       <OptimizeReferences>true</OptimizeReferences>
       <AdditionalDependencies>Libs\GLEW\glew32s.lib;opengl32.lib;%(AdditionalDependencies)</AdditionalDependencies>
@@ -183,6 +141,56 @@
       <AdditionalDependencies>Libs\GLEW\glew32s.lib;opengl32.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
   </ItemDefinitionGroup>
+  <ItemGroup>
+    <ClInclude Include="Src\Thalis\ASTExpression.h" />
+    <ClInclude Include="Src\Thalis\Class.h" />
+    <ClInclude Include="Src\Thalis\Common.h" />
+    <ClInclude Include="Src\Thalis\Function.h" />
+    <ClInclude Include="Src\Thalis\FunctionArg.h" />
+    <ClInclude Include="Src\Thalis\ID.h" />
+    <ClInclude Include="Src\Thalis\Memory\Allocator.h" />
+    <ClInclude Include="Src\Thalis\Memory\BumpAllocator.h" />
+    <ClInclude Include="Src\Thalis\Memory\HeapAllocator.h" />
+    <ClInclude Include="Src\Thalis\Memory\Memory.h" />
+    <ClInclude Include="Src\Thalis\Modules\GLModule.h" />
+    <ClInclude Include="Src\Thalis\Modules\IOModule.h" />
+    <ClInclude Include="Src\Thalis\Modules\MathModule.h" />
+    <ClInclude Include="Src\Thalis\Modules\ModuleID.h" />
+    <ClInclude Include="Src\Thalis\Modules\WindowModule.h" />
+    <ClInclude Include="Src\Thalis\Parser.h" />
+    <ClInclude Include="Src\Thalis\Platform\Windows\Win32Window.h" />
+    <ClInclude Include="Src\Thalis\Program.h" />
+    <ClInclude Include="Src\Thalis\Scope.h" />
+    <ClInclude Include="Src\Thalis\Template.h" />
+    <ClInclude Include="Src\Thalis\Tokenizer.h" />
+    <ClInclude Include="Src\Thalis\TypeInfo.h" />
+    <ClInclude Include="Src\Thalis\VTable.h" />
+    <ClInclude Include="Src\Thalis\Value.h" />
+    <ClInclude Include="Src\Thalis\Window.h" />
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="Src\Thalis\ASTExpression.cpp" />
+    <ClCompile Include="Src\Thalis\Class.cpp" />
+    <ClCompile Include="Src\Thalis\Function.cpp" />
+    <ClCompile Include="Src\Thalis\ID.cpp" />
+    <ClCompile Include="Src\Thalis\Main.cpp" />
+    <ClCompile Include="Src\Thalis\Memory\BumpAllocator.cpp" />
+    <ClCompile Include="Src\Thalis\Memory\HeapAllocator.cpp" />
+    <ClCompile Include="Src\Thalis\Memory\Memory.cpp" />
+    <ClCompile Include="Src\Thalis\Modules\GLModule.cpp" />
+    <ClCompile Include="Src\Thalis\Modules\IOModule.cpp" />
+    <ClCompile Include="Src\Thalis\Modules\MathModule.cpp" />
+    <ClCompile Include="Src\Thalis\Modules\ModuleID.cpp" />
+    <ClCompile Include="Src\Thalis\Modules\WindowModule.cpp" />
+    <ClCompile Include="Src\Thalis\Parser.cpp" />
+    <ClCompile Include="Src\Thalis\Platform\Windows\Win32Window.cpp" />
+    <ClCompile Include="Src\Thalis\Program.cpp" />
+    <ClCompile Include="Src\Thalis\Scope.cpp" />
+    <ClCompile Include="Src\Thalis\Tokenizer.cpp" />
+    <ClCompile Include="Src\Thalis\VTable.cpp" />
+    <ClCompile Include="Src\Thalis\Value.cpp" />
+    <ClCompile Include="Src\Thalis\Window.cpp" />
+  </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
   </ImportGroup>

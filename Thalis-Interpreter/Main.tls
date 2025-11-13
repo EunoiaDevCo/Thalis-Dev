@@ -1,90 +1,12 @@
 Import IO;
-
-class Vec2
-{
-	public Vec2(real32 x, real32 y)
-	{
-		this.x = x;
-		this.y = y;
-	}
-
-	public Vec2(Vec2& vec)
-	{
-		IO.Println("Called Vec2(Vec2&)");
-	}
-
-	public ~Vec2()
-	{
-		IO.Println("~Vec2()");
-	}
-
-	public void Print()
-	{
-		IO.Print("(");
-		IO.Print(x);
-		IO.Print(", ");
-		IO.Print(y);
-		IO.Println(")");
-	}
-
-	public Vec2 Add(Vec2& vec)
-	{
-		return Vec2(x + vec.x, y + vec.y);
-	}
-
-	public void operator=(Vec2& vec)
-	{
-		this.x = vec.x;
-		this.y = vec.y;
-		IO.Println("Called Vec2::operator=(Vec2&)");
-	}
-
-	public Vec2 operator+(Vec2& vec)
-	{
-		return Vec2(x + vec.x, y + vec.y);
-	}
-
-	public Vec2 operator-(Vec2& vec)
-	{
-		return Vec2(x - vec.x, y - vec.y);
-	}
-
-	public real32 x;
-	public real32 y;
-};
-
-class Application
-{
-	public virtual void DoSomething()
-	{
-		avec.Print();
-	}
-
-	public Vec2 avec;
-};
-
-class Game -> inherit[Application]
-{
-	public virtual void DoSomething()
-	{
-		gvec.Print();
-	}
-
-	public Vec2 gvec;
-};
+Import "String.tls"
 
 class Main
 {
-
-	public static void Main()
-	{
-		Application* app = new Game();
-
-		app.avec = Vec2(10.0, 10.0);
-		app.gvec = Vec2(20.0, 20.0);
-
-		app.DoSomething();
-
-		delete app;
-	}
-};
+    public static void Main()
+    {
+        String str = " hi";
+        str = str.SubString(0, 1);
+        str.Print();
+    }
+}

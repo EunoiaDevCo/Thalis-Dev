@@ -1,6 +1,9 @@
 #include "Program.h"
 #include "Modules/IOModule.h"
 #include "Modules/ModuleID.h"
+#include "Modules/MathModule.h"
+#include "Modules/WindowModule.h"
+#include "Modules/GLModule.h"
 #include "Class.h"
 #include "Scope.h"
 #include "Memory/Memory.h"
@@ -54,6 +57,7 @@ void Program::ExecutePendingDestructors(uint32 offset)
 		frame.functionScope = destructor->scope;
 		frame.usesReturnValue = false;
 		frame.popThisStack = true;
+		frame.scopeStackSize = m_ScopeStack.size();
 		PushCallStack(frame);
 
 		m_ProgramCounter = destructor->pc;
@@ -182,10 +186,11 @@ void Program::AddEndCommand()
 	WriteOPCode(OpCode::END);
 }
 
-void Program::AddReturnCommand(bool returnsValue)
+void Program::AddReturnCommand(bool returnsValue, bool clone)
 {
 	WriteOPCode(OpCode::RETURN);
 	WriteUInt8(returnsValue);
+	WriteUInt8(clone);
 }
 
 void Program::AddDeclarePrimitiveCommand(ValueType type, ID scope, ID variableID)
@@ -249,12 +254,13 @@ void Program::AddDeclareObjectWithConstructorCommand(uint16 type, uint16 functio
 	WriteUInt32(variableID);
 }
 
-void Program::AddDeclareObjectWithAssignCommand(uint16 type, ID scope, ID variableID)
+void Program::AddDeclareObjectWithAssignCommand(uint16 type, ID scope, ID variableID, uint16 assignFunctionID)
 {
 	WriteOPCode(OpCode::DECLARE_OBJECT_WITH_ASSIGN);
 	WriteUInt16(type);
 	WriteUInt32(scope);
 	WriteUInt32(variableID);
+	WriteUInt16(assignFunctionID);
 }
 
 void Program::AddVariableSetCommand(ID scope, ID variableID, uint16 assignFunctionID, uint16 variableType)
@@ -426,6 +432,12 @@ void Program::AddModCommand(uint16 functionID)
 {
 	WriteOPCode(OpCode::MOD);
 	WriteUInt16(functionID);
+}
+
+void Program::AddPointerCastCommand(uint16 castToType)
+{
+	WriteOPCode(OpCode::POINTER_CAST);
+	WriteUInt16(castToType);
 }
 
 uint32 Program::GetCodeSize() const
@@ -686,11 +698,15 @@ void Program::ExecuteOpCode(OpCode opcode)
 		uint16 memberType = ReadUInt16();
 		uint8 memberPointerLevel = ReadUInt8();
 		bool indexArray = ReadUInt8();
+		uint32 oo = offset;
+		uint32 i = 0;
+		uint64 typeSize = 0;
 		if (indexArray)
 		{
 			uint32 index = m_Stack.back().GetUInt32();
+			i = index;
 			m_Stack.pop_back();
-			uint64 typeSize = GetTypeSize(memberType);
+			typeSize = GetTypeSize(memberType);
 			offset = typeSize * index + offset;
 		}
 
@@ -705,6 +721,14 @@ void Program::ExecuteOpCode(OpCode opcode)
 		{
 			// Field stores a pointer to the string data
 			member.data = *(void**)memberAddress;
+		}
+		else if (indexArray)
+		{
+			void* v = *(void**)((uint8*)variable->data + oo);
+			member.data = (uint8*)v + i * typeSize;
+
+			char c = *(char*)member.data;
+			uint32 bp = 0;
 		}
 		else
 		{
@@ -828,6 +852,18 @@ void Program::ExecuteOpCode(OpCode opcode)
 		Value result = lhs.NotEquals(rhs, m_StackAllocator);
 		m_Stack.push_back(result);
 	} break;
+	case OpCode::LOGICAL_AND: {
+		Value rhs = m_Stack.back(); m_Stack.pop_back();
+		Value lhs = m_Stack.back(); m_Stack.pop_back();
+		Value result = lhs.LogicalAnd(rhs, m_StackAllocator);
+		m_Stack.push_back(result);
+	} break;
+	case OpCode::LOGICAL_OR: {
+		Value rhs = m_Stack.back(); m_Stack.pop_back();
+		Value lhs = m_Stack.back(); m_Stack.pop_back();
+		Value result = lhs.LogicalOr(rhs, m_StackAllocator);
+		m_Stack.push_back(result);
+	} break;
 	case OpCode::POP: {
 		m_Stack.pop_back();
 	} break;
@@ -844,7 +880,7 @@ void Program::ExecuteOpCode(OpCode opcode)
 		uint8 argCount = ReadUInt8();
 		bool usesReturnValue = ReadUInt8();
 		m_ArgStorage.clear();
-		for (int32 i = argCount - 1; i >= 0; i--)
+		for (uint32 i = 0; i < argCount; i++)
 		{
 			m_ArgStorage.push_back(FunctionArg(m_Stack.back()));
 			m_Stack.pop_back();
@@ -876,6 +912,7 @@ void Program::ExecuteOpCode(OpCode opcode)
 		frame.functionScope = function->scope;
 		frame.usesReturnValue = usesReturnValue;
 		frame.popThisStack = false;
+		frame.scopeStackSize = m_ScopeStack.size();
 		PushCallStack(frame);
 
 		// Jump to function bytecode
@@ -903,6 +940,7 @@ void Program::ExecuteOpCode(OpCode opcode)
 		frame.functionScope = function->scope;
 		frame.usesReturnValue = usesReturnValue;
 		frame.popThisStack = true;
+		frame.scopeStackSize = m_ScopeStack.size();
 		PushCallStack(frame);
 
 		// Jump to function bytecode
@@ -921,7 +959,10 @@ void Program::ExecuteOpCode(OpCode opcode)
 		Scope* scope = GetScope(function->scope);
 		AddFunctionParametersToScope(scope, function);
 
-		m_Stack.push_back(object);
+		GetScope(m_CallStack[m_CallStack.size() - 1].functionScope)->AddTemp(object); // Add this object to the functions's scope that calls this constructor
+		//TODO: Instead of adding it to the function, call destructor when the object is popped from the stack.
+		//Cant think of a way without complicating the stack too much
+		m_Stack.push_back(object); 
 
 		CallFrame frame;
 		frame.returnPC = m_ProgramCounter; // after this instruction
@@ -929,6 +970,7 @@ void Program::ExecuteOpCode(OpCode opcode)
 		frame.marker = m_StackAllocator->GetMarker();
 		frame.functionScope = function->scope;
 		frame.usesReturnValue = false;
+		frame.scopeStackSize = m_ScopeStack.size();
 		PushCallStack(frame);
 
 		m_ProgramCounter = function->pc;
@@ -953,6 +995,7 @@ void Program::ExecuteOpCode(OpCode opcode)
 		frame.functionScope = function->scope;
 		frame.usesReturnValue = usesReturnValue;
 		frame.popThisStack = true;
+		frame.scopeStackSize = m_ScopeStack.size();
 		PushCallStack(frame);
 
 		// Jump to function bytecode
@@ -961,9 +1004,20 @@ void Program::ExecuteOpCode(OpCode opcode)
 	} break;
 	case OpCode::RETURN: {
 		bool hasReturnValue = ReadUInt8();
+		bool clone = ReadUInt8();
 
 		CallFrame frame = m_CallStack.back();
 		m_CallStack.pop_back();
+
+		while (m_ScopeStack.size() > frame.scopeStackSize)
+		{
+			std::pair<ID, uint64> scope = m_ScopeStack.back();
+			m_ScopeStack.pop_back();
+
+			uint32 count = m_PendingDestructors.size();
+			GetScope(scope.first)->Clear(this);
+			ExecutePendingDestructors(count);
+		}
 
 		if (frame.popThisStack)
 			m_ThisStack.pop_back();
@@ -976,7 +1030,33 @@ void Program::ExecuteOpCode(OpCode opcode)
 			{
 				ret = m_Stack.back();
 				if(ret.type != (uint16)ValueType::STRING)
-					ret = ret.Clone(this, m_ReturnAllocator);
+				{
+					if (!ret.IsPrimitive() && !ret.IsPointer() && clone)
+					{
+						Class* cls = GetClass(ret.type);
+						Function* copyConstructor = cls->GetCopyConstructor();
+						
+						uint32 ccount = m_PendingCopyConstructors.size();
+						if (copyConstructor)
+						{
+							Value original = ret;
+							ret = Value::MakeObject(this, original.type, m_ReturnAllocator);
+							m_PendingCopyConstructors.push_back(PendingCopyConstructor(ret, original, copyConstructor));
+						}
+						else
+						{
+							Value original = ret;
+							AddCopyConstructorRecursive(ret, original);
+						}
+
+						ExecutePendingCopyConstructors(ccount);
+						uint32 bp = 0;
+					}
+					else
+					{
+						ret = ret.Clone(this, m_ReturnAllocator);
+					}
+				}
 			}
 
 			m_Stack.pop_back();
@@ -999,6 +1079,8 @@ void Program::ExecuteOpCode(OpCode opcode)
 			}
 
 			m_Stack.push_back(ret);
+			if(!ret.IsPrimitive() && !ret.IsPointer())
+				GetScope(m_CallStack.back().functionScope)->AddTemp(ret);
 		}
 
 		m_ProgramCounter = frame.returnPC;
@@ -1103,6 +1185,11 @@ void Program::ExecuteOpCode(OpCode opcode)
 		Value value = m_Stack.back();
 		m_Stack.pop_back();
 
+		if (value.data == nullptr)
+		{
+			value.pointerLevel = pointerLevel;
+			value.type = type;
+		}
 		if (value.pointerLevel != pointerLevel) //Error
 		{
 			return;
@@ -1162,6 +1249,10 @@ void Program::ExecuteOpCode(OpCode opcode)
 		if (functionID != INVALID_ID)
 		{
 			Function* function = GetClass(type)->GetFunction(functionID);
+
+			Scope* scope = GetScope(function->scope);
+			AddFunctionParametersToScope(scope, function);
+
 			CallFrame frame;
 			frame.returnPC = m_ProgramCounter; // after this instruction
 			frame.basePointer = (uint32)m_Stack.size(); // current stack top before call
@@ -1169,14 +1260,12 @@ void Program::ExecuteOpCode(OpCode opcode)
 			frame.functionScope = function->scope;
 			frame.usesReturnValue = false;
 			frame.popThisStack = true;
+			frame.scopeStackSize = m_ScopeStack.size();
 
 			m_ThisStack.push_back(object);
 
 			PushCallStack(frame);
 			m_ProgramCounter = function->pc;
-
-			Scope* scope = GetScope(function->scope);
-			AddFunctionParametersToScope(scope, function);
 		}
 
 		GetScope(scopeID)->AddVariable(variableID, object);
@@ -1185,11 +1274,21 @@ void Program::ExecuteOpCode(OpCode opcode)
 		uint16 type = ReadUInt16();
 		ID scopeID = ReadUInt32();
 		ID variableID = ReadUInt32();
+		uint16 assignFunctionID = ReadUInt16();
 
 		Value assignValue = m_Stack.back(); m_Stack.pop_back();
 
 		Value object = Value::MakeObject(this, type, m_StackAllocator);
-		object.Assign(assignValue);
+
+		if (assignFunctionID == INVALID_ID)
+		{
+			object.Assign(assignValue);
+		}
+		else
+		{
+			Function* function = GetClass(type)->GetFunction(assignFunctionID);
+			ExecuteAssignFunction(object, assignValue, function);
+		}
 
 		GetScope(scopeID)->AddVariable(variableID, object);
 	} break;
@@ -1211,18 +1310,22 @@ void Program::ExecuteOpCode(OpCode opcode)
 		ID scopeID = ReadUInt32();
 		ID variableID = ReadUInt32();
 		uint16 assignFunctionID = ReadUInt16();
-		if(assignFunctionID == INVALID_ID)
+		Value* variable = GetScope(scopeID)->GetVariable(variableID);
+		if (variable->IsPointer())
 		{
-			GetScope(scopeID)->GetVariable(variableID)->Assign(value);
+			variable->data = value.data;
+		}
+		else if(assignFunctionID == INVALID_ID)
+		{
+			variable->Assign(value);
 		}
 		else //if assignFunctionID is valid then the variable is guaranteed to not be a pointer
 		{
 			uint16 variableType = ReadUInt16();
 			Class* cls = GetClass(variableType);
 			Function* assignFunction = cls->GetFunction(assignFunctionID);
-			Value thisValue = *GetScope(scopeID)->GetVariable(variableID);
 
-			ExecuteAssignFunction(thisValue, value, assignFunction);
+			ExecuteAssignFunction(*variable, value, assignFunction);
 		}
 	} break;
 	case OpCode::MEMBER_SET: {
@@ -1234,10 +1337,12 @@ void Program::ExecuteOpCode(OpCode opcode)
 		uint8 memberPointerLevel = ReadUInt8();
 		bool indexArray = ReadUInt8();
 		uint16 assignFunctionID = ReadUInt16();
+		uint32 oo = offset;
+		uint32 i = 0;
 		if (indexArray)
 		{
 			uint32 index = m_Stack.back().GetUInt32();
-			memberPointerLevel = 0;
+			i = index;
 			m_Stack.pop_back();
 			offset = typeSize * index + offset;
 		}
@@ -1245,7 +1350,18 @@ void Program::ExecuteOpCode(OpCode opcode)
 		Value* variable = GetScope(scopeID)->GetVariable(variableID);
 		Value assignValue = m_Stack.back(); m_Stack.pop_back();
 
-		if (assignFunctionID == INVALID_ID)
+		if (memberPointerLevel > 0)
+		{
+			if (indexArray)
+			{
+				void* v = *(void**)((uint8*)variable->data + oo);
+				v = (uint8*)v + i * typeSize;
+				memcpy(v, assignValue.data, typeSize);
+			}
+			else
+				*(void**)((uint8*)variable->data + offset) = assignValue.data;
+		}
+		else if (assignFunctionID == INVALID_ID)
 		{
 			variable->AssignMember(offset, type, memberPointerLevel, typeSize, assignValue);
 		}
@@ -1264,6 +1380,33 @@ void Program::ExecuteOpCode(OpCode opcode)
 	case OpCode::INDEX: {
 		Value index = m_Stack.back(); m_Stack.pop_back();
 		Value base = m_Stack.back(); m_Stack.pop_back();
+
+		if (base.IsPointer() && !base.isArray)
+		{
+			uint64 typeSize = GetTypeSize(base.type);
+			uint32 indexValue = index.GetUInt32();
+			Value element;
+			element.type = base.type;
+			element.pointerLevel = base.pointerLevel - 1;
+			element.isArray = false;
+			if (element.pointerLevel == 0)
+				element.data = (uint8*)base.data + typeSize * indexValue;
+			else
+				element.data = *(void**)((uint8*)base.data + typeSize * indexValue);
+
+			m_Stack.push_back(element);
+			break;
+		}
+
+		if (base.type == (uint16)ValueType::STRING && base.pointerLevel == 0)
+		{
+			uint32 indexValue = index.GetUInt32();
+			char* chars = (char*)((uint8*)base.data + sizeof(uint32));
+			Value result = Value::MakeChar(chars[indexValue], m_StackAllocator);
+			m_Stack.push_back(result);
+			break;
+		}
+
 		uint32 elementSize = GetTypeSize(base.type);
 		if (!base.IsPrimitive() && base.pointerLevel == 1) // if its an array of non pointer objects
 			elementSize += sizeof(VTable*);
@@ -1271,12 +1414,16 @@ void Program::ExecuteOpCode(OpCode opcode)
 		uint32 offset = index.GetUInt32();
 
 		uint8* address = (uint8*)base.data + offset * elementSize;
+		if (base.pointerLevel > 1)
+			address = *(uint8**)address;
+
 		ArrayHeader* header = (ArrayHeader*)(address - sizeof(ArrayHeader));
 
 		Value result;
 		result.type = base.type;
 		result.pointerLevel = header->elementPointerLevel;
-		result.data = address + sizeof(VTable*);
+		result.data = address;
+		result.isArray = false;
 
 		m_Stack.push_back(result);
 	} break;
@@ -1291,6 +1438,10 @@ void Program::ExecuteOpCode(OpCode opcode)
 
 		uint32 offset = index.GetUInt32();
 
+		if (base.pointerLevel > 1)
+		{
+			*(void**)((uint8*)base.data + offset * elementSize) = assign.data;
+		}
 		if (assignFunctionID == INVALID_ID) //only primitive, objects are guaranteed to have an assign function
 		{
 			uint8* address = (uint8*)base.data + offset * elementSize;
@@ -1345,7 +1496,11 @@ void Program::ExecuteOpCode(OpCode opcode)
 		Value& thisValue = m_ThisStack.back();
 		Value& assignValue = m_Stack.back(); m_Stack.pop_back();
 
-		if (assignFunctionID == INVALID_ID)
+		if (memberPointerLevel > 0)
+		{
+			*(void**)((uint8*)thisValue.data + offset) = assignValue.data;
+		}
+		else if (assignFunctionID == INVALID_ID)
 		{
 			thisValue.AssignMember(offset, memberType, memberPointerLevel, memberTypeSize, assignValue);
 		}
@@ -1449,6 +1604,7 @@ void Program::ExecuteOpCode(OpCode opcode)
 			frame.functionScope = function->scope;
 			frame.usesReturnValue = false;
 			frame.popThisStack = true;
+			frame.scopeStackSize = m_ScopeStack.size();
 			PushCallStack(frame);
 
 			m_ProgramCounter = function->pc;
@@ -1458,26 +1614,50 @@ void Program::ExecuteOpCode(OpCode opcode)
 			m_Stack.push_back(object);
 		}
 	} break;
+	case OpCode::NOT: {
+		Value value = m_Stack.back();
+		m_Stack.pop_back();
+		m_Stack.push_back(value.Invert(m_StackAllocator));
+	} break;
+	case OpCode::POINTER_CAST: {
+		uint16 castToType = ReadUInt16();
+		Value value = m_Stack.back();
+		m_Stack.pop_back();
+		value.type = castToType;
+		m_Stack.push_back(value);
+	} break;
+	case OpCode::STRLEN: {
+		Value str = m_Stack.back();
+		m_Stack.pop_back();
+		uint32 length = *(uint32*)str.data;
+		m_Stack.push_back(Value::MakeUInt32(length, m_StackAllocator));
+	} break;
 	} 
 }
 
 void Program::ExecuteModuleFunctionCall(ID moduleID, uint16 function, bool usesReturnValue)
 {
+	Value value = Value::MakeNULL();
 	switch (moduleID)
 	{
-	case IO_MODULE_ID: {
-		IOModule::CallFunction(function, m_ArgStorage);
-	} break;
+	case IO_MODULE_ID: value = IOModule::CallFunction(this, function, m_ArgStorage); break;
+	case MATH_MODULE_ID: value = MathModule::CallFunction(this, function, m_ArgStorage); break;
+	case WINDOW_MODULE_ID: value = WindowModule::CallFunction(this, function, m_ArgStorage); break;
+	case OPENGL_MODULE_ID: value = GLModule::CallFunction(this, function, m_ArgStorage); break;
 	}
+
+	if (value.type != INVALID_ID && usesReturnValue)
+		m_Stack.push_back(value);
 }
 
 void Program::ExecuteModuleConstant(ID moduleID, uint16 constant)
 {
 	switch (moduleID)
 	{
-	case IO_MODULE_ID: {
-		m_Stack.push_back(IOModule::Constant(constant));
-	} break;
+	case IO_MODULE_ID: m_Stack.push_back(IOModule::Constant(this, constant)); break;
+	case MATH_MODULE_ID: m_Stack.push_back(MathModule::Constant(this, constant)); break;
+	case WINDOW_MODULE_ID: m_Stack.push_back(WindowModule::Constant(this, constant)); break;
+	case OPENGL_MODULE_ID: m_Stack.push_back(GLModule::Constant(this, constant)); break;
 	}
 }
 
@@ -1510,12 +1690,12 @@ void Program::AddFunctionParametersToScope(Scope* scope, Function* function)
 		}
 		else
 		{
-			arg.pointerLevel = POINTER_LEVEL_REFERENCEE;
+			arg.pointerLevel = POINTER_LEVEL_REFERENCE;
 		}
 
 		if (arg.type != param.type.type)
 		{
-			arg = arg.CastTo(this, param.type.type, param.type.pointerLevel, m_StackAllocator);
+			arg = arg.CastTo(this, param.type.type, param.isReference ? POINTER_LEVEL_REFERENCE : param.type.pointerLevel, m_StackAllocator);
 		}
 
 		scope->AddVariable(param.variableID, arg);
@@ -1574,6 +1754,7 @@ void Program::ExecutePendingCopyConstructors(uint32 offset)
 		frame.functionScope = function->scope;
 		frame.usesReturnValue = false;
 		frame.popThisStack = true;
+		frame.scopeStackSize = m_ScopeStack.size();
 		PushCallStack(frame);
 
 		m_ProgramCounter = function->pc;
@@ -1603,6 +1784,7 @@ void Program::ExecuteAssignFunction(const Value& thisValue, const Value& assignV
 	frame.functionScope = assignFunction->scope;
 	frame.usesReturnValue = false;
 	frame.popThisStack = true;
+	frame.scopeStackSize = m_ScopeStack.size();
 	PushCallStack(frame);
 
 	m_ProgramCounter = assignFunction->pc;
@@ -1623,6 +1805,7 @@ void Program::ExecuteArithmaticFunction(const Value& lhs, const Value& rhs, Func
 	frame.functionScope = function->scope;
 	frame.usesReturnValue = true;
 	frame.popThisStack = true;
+	frame.scopeStackSize = m_ScopeStack.size();
 	PushCallStack(frame);
 
 	m_ProgramCounter = function->pc;

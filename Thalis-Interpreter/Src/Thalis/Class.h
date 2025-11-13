@@ -36,6 +36,7 @@ public:
 		m_CopyConstructor(nullptr),
 		m_AssignSTFunction(nullptr),
 		m_BaseClass(baseClass),
+		m_GenericClass(nullptr),
 		m_IsTemplateInstance(false)
 	{ }
 
@@ -79,8 +80,12 @@ public:
 	inline bool HasCopyConstructor() const { return m_CopyConstructor != nullptr; }
 	inline bool HasAssignSTFunction() const { return m_AssignSTFunction != nullptr; }
 	inline bool HasBaseClass() const { return m_BaseClass != nullptr; }
+	inline bool HasGenericClass() const { return m_GenericClass != nullptr; }
 
 	inline VTable* GetVTable() const { return m_VTable; }
+	inline Class* GetGenericClass() const { return m_GenericClass; }
+
+	inline ID GetID() const { return m_ID; }
 
 	void BuildVTable();
 private:
@@ -95,6 +100,7 @@ private:
 	uint64 m_Size;
 
 	Class* m_BaseClass;
+	Class* m_GenericClass;
 
 	std::unordered_map<std::string, std::vector<Function*>> m_Functions;
 	std::unordered_map<std::string, uint32> m_FunctionDefinitionMap;

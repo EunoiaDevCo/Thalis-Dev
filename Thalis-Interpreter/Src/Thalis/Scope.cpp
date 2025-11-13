@@ -129,6 +129,12 @@ void Scope::Clear(Program* program)
 		AddDestructorRecursive(program, value);
 	}
 
+	for (Value& value : m_Temps)
+	{
+		AddDestructorRecursive(program, value);
+	}
+
 	m_VariableMap.clear();
 	m_Storage.clear();
+	m_Temps.clear();
 }

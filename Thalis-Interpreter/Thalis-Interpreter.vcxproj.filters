@@ -1,0 +1,105 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <Filter Include="Memory">
+      <UniqueIdentifier>{BE94DDC2-AA36-0899-93F1-1BED7F328FE9}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Modules">
+      <UniqueIdentifier>{DE144435-4AF4-C2D0-530C-4EA7BF6A2932}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Platform">
+      <UniqueIdentifier>{2AC788B4-1694-E3BF-3FAD-D1672BD9184E}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Platform\Windows">
+      <UniqueIdentifier>{64FBD71A-50F4-F66C-7926-DCF1657ED678}</UniqueIdentifier>
+    </Filter>
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="Src\Thalis\ASTExpression.h" />
+    <ClInclude Include="Src\Thalis\Class.h" />
+    <ClInclude Include="Src\Thalis\Common.h" />
+    <ClInclude Include="Src\Thalis\Function.h" />
+    <ClInclude Include="Src\Thalis\FunctionArg.h" />
+    <ClInclude Include="Src\Thalis\ID.h" />
+    <ClInclude Include="Src\Thalis\Memory\Allocator.h">
+      <Filter>Memory</Filter>
+    </ClInclude>
+    <ClInclude Include="Src\Thalis\Memory\BumpAllocator.h">
+      <Filter>Memory</Filter>
+    </ClInclude>
+    <ClInclude Include="Src\Thalis\Memory\HeapAllocator.h">
+      <Filter>Memory</Filter>
+    </ClInclude>
+    <ClInclude Include="Src\Thalis\Memory\Memory.h">
+      <Filter>Memory</Filter>
+    </ClInclude>
+    <ClInclude Include="Src\Thalis\Modules\GLModule.h">
+      <Filter>Modules</Filter>
+    </ClInclude>
+    <ClInclude Include="Src\Thalis\Modules\IOModule.h">
+      <Filter>Modules</Filter>
+    </ClInclude>
+    <ClInclude Include="Src\Thalis\Modules\MathModule.h">
+      <Filter>Modules</Filter>
+    </ClInclude>
+    <ClInclude Include="Src\Thalis\Modules\ModuleID.h">
+      <Filter>Modules</Filter>
+    </ClInclude>
+    <ClInclude Include="Src\Thalis\Modules\WindowModule.h">
+      <Filter>Modules</Filter>
+    </ClInclude>
+    <ClInclude Include="Src\Thalis\Parser.h" />
+    <ClInclude Include="Src\Thalis\Platform\Windows\Win32Window.h">
+      <Filter>Platform\Windows</Filter>
+    </ClInclude>
+    <ClInclude Include="Src\Thalis\Program.h" />
+    <ClInclude Include="Src\Thalis\Scope.h" />
+    <ClInclude Include="Src\Thalis\Template.h" />
+    <ClInclude Include="Src\Thalis\Tokenizer.h" />
+    <ClInclude Include="Src\Thalis\TypeInfo.h" />
+    <ClInclude Include="Src\Thalis\VTable.h" />
+    <ClInclude Include="Src\Thalis\Value.h" />
+    <ClInclude Include="Src\Thalis\Window.h" />
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="Src\Thalis\ASTExpression.cpp" />
+    <ClCompile Include="Src\Thalis\Class.cpp" />
+    <ClCompile Include="Src\Thalis\Function.cpp" />
+    <ClCompile Include="Src\Thalis\ID.cpp" />
+    <ClCompile Include="Src\Thalis\Main.cpp" />
+    <ClCompile Include="Src\Thalis\Memory\BumpAllocator.cpp">
+      <Filter>Memory</Filter>
+    </ClCompile>
+    <ClCompile Include="Src\Thalis\Memory\HeapAllocator.cpp">
+      <Filter>Memory</Filter>
+    </ClCompile>
+    <ClCompile Include="Src\Thalis\Memory\Memory.cpp">
+      <Filter>Memory</Filter>
+    </ClCompile>
+    <ClCompile Include="Src\Thalis\Modules\GLModule.cpp">
+      <Filter>Modules</Filter>
+    </ClCompile>
+    <ClCompile Include="Src\Thalis\Modules\IOModule.cpp">
+      <Filter>Modules</Filter>
+    </ClCompile>
+    <ClCompile Include="Src\Thalis\Modules\MathModule.cpp">
+      <Filter>Modules</Filter>
+    </ClCompile>
+    <ClCompile Include="Src\Thalis\Modules\ModuleID.cpp">
+      <Filter>Modules</Filter>
+    </ClCompile>
+    <ClCompile Include="Src\Thalis\Modules\WindowModule.cpp">
+      <Filter>Modules</Filter>
+    </ClCompile>
+    <ClCompile Include="Src\Thalis\Parser.cpp" />
+    <ClCompile Include="Src\Thalis\Platform\Windows\Win32Window.cpp">
+      <Filter>Platform\Windows</Filter>
+    </ClCompile>
+    <ClCompile Include="Src\Thalis\Program.cpp" />
+    <ClCompile Include="Src\Thalis\Scope.cpp" />
+    <ClCompile Include="Src\Thalis\Tokenizer.cpp" />
+    <ClCompile Include="Src\Thalis\VTable.cpp" />
+    <ClCompile Include="Src\Thalis\Value.cpp" />
+    <ClCompile Include="Src\Thalis\Window.cpp" />
+  </ItemGroup>
+</Project>

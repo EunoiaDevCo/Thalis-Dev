@@ -300,12 +300,14 @@ struct ASTExpressionDeclareObjectAssign : public ASTExpression
 	ID variableID;
 	ASTExpression* assignExpr;
 	std::string templateTypeName;
+	uint16 assignFunctionID;
 
 	ASTExpressionDeclareObjectAssign(ID scope, uint16 type, ID variableID, ASTExpression* assignExpr) :
-		ASTExpression(scope), type(type), variableID(variableID), assignExpr(assignExpr) { }
+		ASTExpression(scope), type(type), variableID(variableID), assignExpr(assignExpr), assignFunctionID(INVALID_ID) { }
 
 	virtual void EmitCode(Program* program) override;
 	virtual TypeInfo GetTypeInfo(Program* program) override;
+	virtual bool Resolve(Program* program) override;
 	virtual ASTExpression* InjectTemplateType(Program* program, Class* cls, ID newScope, const TemplateInstantiation& instantiation, Class* templatedClass) override;
 };
 
@@ -521,5 +523,42 @@ struct ASTExpressionVirtualFunctionCall : public ASTExpression
 	virtual void EmitCode(Program* program) override;
 	virtual TypeInfo GetTypeInfo(Program* program) override;
 	virtual bool Resolve(Program* program) override;
+	virtual ASTExpression* InjectTemplateType(Program* program, Class* cls, ID newScope, const TemplateInstantiation& instantiation, Class* templatedClass) override;
+};
+
+struct ASTExpressionNot : public ASTExpression
+{
+	ASTExpression* expr;
+
+	ASTExpressionNot(ID scope, ASTExpression* expr) :
+		ASTExpression(scope), expr(expr) { }
+
+	virtual void EmitCode(Program* program) override;
+	virtual TypeInfo GetTypeInfo(Program* program) override;
+	virtual ASTExpression* InjectTemplateType(Program* program, Class* cls, ID newScope, const TemplateInstantiation& instantiation, Class* templatedClass) override;
+};
+
+struct ASTExpressionPointerCast : public ASTExpression
+{
+	uint16 castTo;
+	ASTExpression* expr;
+
+	ASTExpressionPointerCast(ID scope, uint16 castTo, ASTExpression* expr) :
+		ASTExpression(scope), castTo(castTo), expr(expr) { }
+
+	virtual void EmitCode(Program* program) override;
+	virtual TypeInfo GetTypeInfo(Program* program) override;
+	virtual ASTExpression* InjectTemplateType(Program* program, Class* cls, ID newScope, const TemplateInstantiation& instantiation, Class* templatedClass) override;
+};
+
+struct ASTExpressionStrlen : public ASTExpression
+{
+	ASTExpression* expr;
+
+	ASTExpressionStrlen(ID scope, ASTExpression* expr) :
+		ASTExpression(scope), expr(expr) { }
+
+	virtual void EmitCode(Program* program) override;
+	virtual TypeInfo GetTypeInfo(Program* program) override;
 	virtual ASTExpression* InjectTemplateType(Program* program, Class* cls, ID newScope, const TemplateInstantiation& instantiation, Class* templatedClass) override;
 };

@@ -43,11 +43,15 @@ enum class OpCode : uint16
 
 	ADD, SUBTRACT, MULTIPLY, DIVIDE, MOD,
 	LESS, GREATER, LESS_EQUAL, GREATER_EQUAL, EQUALS, NOT_EQUALS,
-	UNARY_UPDATE,
+	UNARY_UPDATE, NOT, NEGATE, LOGICAL_OR, LOGICAL_AND,
+
+	POINTER_CAST,
 
 	MODULE_CONSTANT, RETURN,
 	MODULE_FUNCTION_CALL, STATIC_FUNCTION_CALL, MEMBER_FUNCTION_CALL,
 	CONSTRUCTOR_CALL, VIRTUAL_FUNCTION_CALL,
+
+	STRLEN,
 
 	END
 
@@ -61,6 +65,7 @@ struct CallFrame
 	ID functionScope;	  // Scope of the function to clear
 	bool usesReturnValue;
 	bool popThisStack;
+	uint32 scopeStackSize;
 };
 
 struct LoopFrame
@@ -105,13 +110,13 @@ public:
 	void AddPushVariableCommand(ID scope, ID variableID);
 	void AddPushMemberCommand(ID scope, ID variableID, uint64 offset, uint16 memberType, uint8 memberPointerLevel, bool indexArray);
 	void AddEndCommand();
-	void AddReturnCommand(bool returnsValue);
+	void AddReturnCommand(bool returnsValue, bool clone);
 	void AddDeclarePrimitiveCommand(ValueType type, ID scope, ID variableID);
 	void AddDeclarePointerCommand(uint16 type, uint8 pointerLevel, ID scope, ID variableID);
 	void AddDeclareNullPtrCommand(uint16 type, uint8 pointerLevel, ID scope, ID variableID);
 	void AddDeclareArrayCommand(uint16 type, uint8 pointerLevel, uint32 length, uint32 initializerCount, ID scope, ID variableID);
 	void AddDeclareObjectWithConstructorCommand(uint16 type, uint16 functionID, ID scope, ID variableID);
-	void AddDeclareObjectWithAssignCommand(uint16 type, ID scope, ID variableID);
+	void AddDeclareObjectWithAssignCommand(uint16 type, ID scope, ID variableID, uint16 assignFunctionID);
 	void AddVariableSetCommand(ID scope, ID variableID, uint16 assignFunctionID, uint16 variableType);
 	void AddMemberSetCommand(ID scope, ID variableID, uint64 offset, uint16 type, uint64 size, uint8 memberPointerLevel, bool indexArray, uint16 assignFunctionID);
 	void AddNewArrayCommand(uint16 type, uint8 pointerLevel);
@@ -139,6 +144,8 @@ public:
 	void AddMulCommand(uint16 functionID);
 	void AddDivCommand(uint16 functionID);
 	void AddModCommand(uint16 functionID);
+
+	void AddPointerCastCommand(uint16 castToType);
 
 	uint32 GetCodeSize() const;
 	uint32 GetStackSize() const;

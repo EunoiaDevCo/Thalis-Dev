@@ -16,12 +16,13 @@ enum class IOModuleFunction : uint16
 	PRINTLN,
 };
 
+class Program;
 class IOModule
 {
 public:
 	static bool Init();
-	static Value CallFunction(uint16 function, const std::vector<FunctionArg>& args);
-	static Value Constant(uint16 constant);
+	static Value CallFunction(Program* program, uint16 function, const std::vector<FunctionArg>& args);
+	static Value Constant(Program* program, uint16 constant);
 
 	static TypeInfo GetFunctionReturnInfo(uint16 function);
 	static TypeInfo GetConstantTypeInfo(uint16 constant);

@@ -32,10 +32,12 @@ public:
 	TypeInfo GetVariableDerivedTypeInfo(ID variableID);
 	void Clear(Program* program);
 
+	inline void AddTemp(const Value& temp) { m_Temps.push_back(temp); }
 private:
 	Scope* m_Parent;
 	std::vector<Value> m_Storage;
 	std::unordered_map<ID, uint32> m_VariableMap;
 	std::unordered_map<std::string, ID>	m_VariableNameMap;
 	std::unordered_map<ID, DeclaredVariable> m_VariableTypes;
+	std::vector<Value> m_Temps;
 };

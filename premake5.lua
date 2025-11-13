@@ -61,6 +61,7 @@ project "Thalis-Interpreter"
 	filter "configurations:Release"
 		defines "TLS_RELEASE"
 		optimize "On"
+		symbols "On"
 		buildoptions "/MD"
 
 	filter "configurations:Dist"

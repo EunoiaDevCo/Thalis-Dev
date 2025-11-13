@@ -1,0 +1,218 @@
+Import IO;
+
+class String
+{
+    public String(string str)
+    {
+        m_Length = strlen(str);
+        m_Capacity = m_Length + 1;
+        m_Chars = new char[m_Capacity];
+        m_Chars[m_Length] = 0;
+
+        for(uint32 i = 0; i < m_Length; i++)
+            m_Chars[i] = str[i];
+    }
+
+    public String(String& str)
+    {
+        m_Length = str.m_Length;
+        m_Capacity = str.m_Capacity;
+        m_Chars = new char[m_Capacity];
+        for(uint32 i = 0; i < m_Length; i++)
+            m_Chars[i] = str.m_Chars[i];
+
+        m_Chars[m_Length] = 0;
+    }
+
+    public String(uint32 length)
+    {
+        m_Length = length;
+        m_Capacity = m_Length + 1;
+        m_Chars = new char[m_Capacity];
+        m_Chars[m_Length] = 0;
+    }
+
+    public ~String()
+    {
+        delete[] m_Chars;
+    }
+
+    public void operator=(string str)
+    {
+        uint32 len = strlen(str) + 1;
+        m_Length = len - 1;
+        if(len > m_Capacity)
+        {
+            delete[] m_Chars;
+            m_Capacity = len;
+            m_Chars = new char[m_Capacity];
+        }
+
+        for(uint32 i = 0; i < m_Length; i++)
+            m_Chars[i] = str[i];
+
+        m_Chars[m_Length] = 0;
+    }
+
+    public void operator=(String& str)
+    {
+        m_Length = str.m_Length;
+        if(m_Length > m_Capacity)
+        {
+            delete[] m_Chars;
+            m_Capacity = m_Length + 1;
+            m_Chars = new char[m_Capacity];
+        }
+
+        for(uint32 i = 0; i < m_Length; i++)
+            m_Chars[i] = str.m_Chars[i];
+
+        m_Chars[m_Length] = 0;
+    }
+
+    public void Print()
+    {
+        IO.Println(m_Chars);
+    }
+
+    public uint32 Length() { return m_Length; }
+    public bool Empty() { return m_Length == 0; }
+
+    public String SubString(uint32 begin, uint32 end)
+    {
+        uint32 newLength = end - begin + 1;
+        String result(newLength);
+        uint32 counter = 0;
+        for(uint32 i = begin; i <= end; i++)
+            result.m_Chars[counter++] = m_Chars[i];
+        
+        return result;
+    }
+
+    public String SubString(uint32 begin)
+    {
+        return SubString(begin, m_Length - 1);
+    }
+
+    public int32 FindFirstOf(String& str, uint32 offset)
+    {
+        if(str.m_Length == 0 || str.m_Length > m_Length)
+            return -2;
+        
+        for (uint32 i = offset; i <= m_Length - str.m_Length; i++)
+        {
+            bool found = true;
+            
+            for (uint32 j = 0; j < str.m_Length; j++)
+            {
+                if (m_Chars[i + j] != str.m_Chars[j])
+                {
+                    found = false;
+                    break;
+                }
+            }
+
+            if (found)
+                return i;
+        }
+
+        return -1;
+    }
+
+    public int32 FindFirstOf(String& str)
+    {
+        return FindFirstOf(str, 0);
+    }
+
+    public int32 FindFirstNotOf(String& str, uint32 offset)
+    {
+        for(uint32 i = offset; i < m_Length; i++)
+        {
+            bool isNotOf = true;
+            for(uint32 j = 0; j < str.m_Length; j++)
+            {
+                if(m_Chars[i] == str.m_Chars[j])
+                {
+                    isNotOf = false;
+                    break;
+                }
+            }
+
+            if(isNotOf)
+                return i;
+        }
+
+        return -1;
+    }
+
+    public int32 FindFirstNotOf(String& str)
+    {
+        return FindFirstNotOf(str, 0);
+    }
+
+    public String TrimBeginning()
+    {
+        if(m_Length == 0) return String(0);
+        if(m_Length == 1) return this;
+
+        uint32 newBeginning = 0;
+        for(uint32 i = 0; i < m_Length; i++)
+        {
+            if((m_Chars[i] == ' ') || (m_Chars[i] == '\n') || (m_Chars[i] == '\t'))
+            {
+                newBeginning++;
+            }
+            else
+            {
+                break;
+            }
+        }
+
+        return SubString(newBeginning);
+    }
+
+    public String TrimEnding()
+    {
+
+    }
+
+    public String Trim()
+    {
+        String trimmed = TrimBeginning();
+        return trimmed.TrimEnding();
+    }
+
+    public String operator+(String& str)
+    {
+        uint32 newLength = m_Length + str.m_Length;
+        String result(newLength);
+        
+        for(uint32 i = 0; i < m_Length; i++)
+            result.m_Chars[i] = m_Chars[i];
+
+        uint32 counter = 0;
+        for(uint32 i = m_Length; i < newLength; i++)
+            result.m_Chars[i] = str.m_Chars[counter++];
+
+        return result;
+    }
+
+    public String operator+(string str)
+    {
+        uint32 newLength = m_Length + strlen(str);
+        String result(newLength);
+        
+        for(uint32 i = 0; i < m_Length; i++)
+            result.m_Chars[i] = m_Chars[i];
+
+        uint32 counter = 0;
+        for(uint32 i = m_Length; i < newLength; i++)
+            result.m_Chars[i] = str[counter++];
+
+        return result;
+    }
+
+    private char* m_Chars;
+    private uint32 m_Length;
+    private uint32 m_Capacity;
+};

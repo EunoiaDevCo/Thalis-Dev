@@ -4,13 +4,15 @@
 void* HeapAllocator::AllocAligned(uint64 size, uint64 alignment)
 {
 	m_NumAllocs++;
-	return malloc(size);
+	void* data = malloc(size);
+	return data;
 }
 
 void* HeapAllocator::Alloc(uint64 size)
 {
 	m_NumAllocs++;
-	return malloc(size);
+	void* data = malloc(size);
+	return data;
 }
 
 void HeapAllocator::Free()

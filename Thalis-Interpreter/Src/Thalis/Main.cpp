@@ -32,5 +32,7 @@ int main()
 	std::cout << "Num heap frees: " << numHeapFrees << std::endl;
 	std::cout << "Stack size: " << stackSize << std::endl;
 
+	while (true);
+
 	return 0;
 }

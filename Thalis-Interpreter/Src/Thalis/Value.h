@@ -5,7 +5,7 @@
 #include <vector>
 #include <iostream>
 
-#define POINTER_LEVEL_REFERENCEE UINT8_MAX
+#define POINTER_LEVEL_REFERENCE UINT8_MAX
 
 enum class ValueType
 {
@@ -137,6 +137,8 @@ struct Value
 		case ValueType::BOOL: return *(bool*)data;
 		case ValueType::CHAR: return *(char*)data;
 		}
+
+		return 0;
 	}
 
 	inline int8 GetInt8() const
@@ -171,6 +173,8 @@ struct Value
 		case ValueType::BOOL: return *(bool*)data;
 		case ValueType::CHAR: return *(char*)data;
 		}
+
+		return 0;
 	}
 
 	inline real32 GetReal32() const
@@ -195,6 +199,8 @@ struct Value
 		case ValueType::BOOL: return *(bool*)data;
 		case ValueType::CHAR: return *(char*)data;
 		}
+
+		return 0.0f;
 	}
 
 	inline char GetChar() const
@@ -219,6 +225,8 @@ struct Value
 		case ValueType::BOOL: return *(bool*)data;
 		case ValueType::CHAR: return *(char*)data != 0;
 		}
+
+		return false;
 	}
 
 	inline std::string GetString() const
@@ -643,6 +651,18 @@ struct Value
 		return MakeBool(result, allocator);
 	}
 
+	inline Value LogicalAnd(const Value& rhs, Allocator* allocator)
+	{
+		bool result = GetBool() && rhs.GetBool();
+		return MakeBool(result, allocator);
+	}
+
+	inline Value LogicalOr(const Value& rhs, Allocator* allocator)
+	{
+		bool result = GetBool() || rhs.GetBool();
+		return MakeBool(result, allocator);
+	}
+
 	inline void Increment()
 	{
 		switch ((ValueType)type)
@@ -679,8 +699,35 @@ struct Value
 		}
 	}
 
+	inline Value Invert(Allocator* allocator)
+	{
+		switch ((ValueType)type)
+		{
+		case ValueType::UINT8:   return Value::MakeBool(!(*(uint8*)data), allocator); break;
+		case ValueType::UINT16:  return Value::MakeBool(!(*(uint16*)data), allocator); break;
+		case ValueType::UINT32:  return Value::MakeBool(!(*(uint32*)data), allocator); break;
+		case ValueType::UINT64:  return Value::MakeBool(!(*(uint64*)data), allocator); break;
+		case ValueType::INT8:    return Value::MakeBool(!(*(int8*)data), allocator); break;
+		case ValueType::INT16:   return Value::MakeBool(!(*(int16*)data), allocator); break;
+		case ValueType::INT32:   return Value::MakeBool(!(*(int32*)data), allocator); break;
+		case ValueType::INT64:   return Value::MakeBool(!(*(int64*)data), allocator); break;
+		case ValueType::REAL32:  return Value::MakeBool(!(*(real32*)data), allocator); break;
+		case ValueType::REAL64:  return Value::MakeBool(!(*(real64*)data), allocator); break;
+		case ValueType::CHAR:    return Value::MakeBool(!(*(char*)data), allocator); break;
+		case ValueType::BOOL:	 return Value::MakeBool(!(*(bool*)data), allocator); break;
+		}
+
+		return Value::MakeBool(false, allocator);
+	}
+
 	inline friend std::ostream& operator<<(std::ostream& os, const Value& v)
 	{
+		if (v.pointerLevel == 1 && v.type == (uint16)ValueType::CHAR)
+		{
+			os << (char*)v.data;
+			return os;
+		}
+
 		switch ((ValueType)v.type)
 		{
 		case ValueType::UINT8:   os << v.GetUInt8(); break;
@@ -721,6 +768,25 @@ struct Value
 
 	void Assign(const Value& value);
 	void AssignMember(uint64 offset, uint16 type, uint8 pointerLevel, uint64 typeSize, const Value& value);
+	void AssignMemberIndex(uint64 offset, uint16 type, uint8 pointerLevel, uint64 typeSize, const Value& value);
+
+	inline void AssignUIntDirect(uint64 value)
+	{
+		switch ((ValueType)type) {
+		case ValueType::BOOL:   *(bool*)data = value; break;
+		case ValueType::CHAR:   *(char*)data = value; break;
+		case ValueType::INT8:   *(int8*)data = value; break;
+		case ValueType::UINT8:  *(uint8*)data = value; break;
+		case ValueType::INT16:  *(int16*)data = value; break;
+		case ValueType::UINT16: *(uint16*)data = value; break;
+		case ValueType::INT32:  *(int32*)data = value; break;
+		case ValueType::UINT32: *(uint32*)data = value; break;
+		case ValueType::INT64:  *(int64*)data = value; break;
+		case ValueType::UINT64: *(uint64*)data = value; break;
+		case ValueType::REAL32: *(real32*)data = value; break;
+		case ValueType::REAL64: *(real64*)data = value; break;
+		}
+	}
 
 	Value Clone(Program* program, Allocator* allocator);
 
