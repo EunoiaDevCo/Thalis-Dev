@@ -198,7 +198,8 @@ Value Value::Clone(Program* program, Allocator* allocator)
 Value Value::MakeArray(Program* program, uint16 type, uint8 pointerLevel, uint32 length, Allocator* allocator)
 {
 	uint64 typeSize = pointerLevel == 0 ? program->GetTypeSize(type) : sizeof(void*);
-	typeSize += sizeof(VTable*);
+	if(!Value::IsPrimitiveType(type) && pointerLevel == 0)
+		typeSize += sizeof(VTable*);
 	
 	ArrayHeader header;
 	header.elementPointerLevel = pointerLevel;
@@ -231,6 +232,34 @@ Value Value::MakeArray(Program* program, uint16 type, uint8 pointerLevel, uint32
 	return value;
 }
 
+static void InitializeArrayHeaders(Program* program, uint8* data, Class* cls)
+{
+	const std::vector<ClassField>& members = cls->GetMemberFields();
+	for (uint32 i = 0; i < members.size(); i++)
+	{
+		const ClassField& member = members[i];
+		if (member.arrayLength > 0)
+		{
+			ArrayHeader* header = (ArrayHeader*)(data + member.offset - sizeof(ArrayHeader));
+			header->length = member.arrayLength;
+			header->elementPointerLevel = member.type.pointerLevel - 1;
+
+			if (!Value::IsPrimitiveType(member.type.type) && member.type.pointerLevel == 0)
+			{
+				Class* elementClass = program->GetClass(member.type.type);
+				for (uint32 j = 0; j < member.arrayLength; j++)
+				{
+					InitializeArrayHeaders(program, data + member.offset + elementClass->GetSize() * i, elementClass);
+				}
+			}
+		}
+		else if (!Value::IsPrimitiveType(member.type.type) && member.type.pointerLevel == 0)
+		{
+			InitializeArrayHeaders(program, data + member.offset, program->GetClass(member.type.type));
+		}
+	}
+}
+
 Value Value::MakeObject(Program* program, uint16 type, Allocator* allocator)
 {
 	Class* cls = program->GetClass(type);
@@ -250,18 +279,8 @@ Value Value::MakeObject(Program* program, uint16 type, Allocator* allocator)
 	value.data = memory + sizeof(VTable*); // point *after* the vtable pointer
 	value.isArray = false;
 
+	memset(value.data, 0, typeSize);
+	InitializeArrayHeaders(program, (uint8*)value.data, cls);
+
 	return value;
 }
-
-/*Value Value::MakeObject(Program* program, uint16 type, Allocator* allocator)
-{
-	uint64 typeSize = program->GetTypeSize(type);
-
-	Value value;
-	value.type = type;
-	value.pointerLevel = 0;
-	value.data = allocator->Alloc(typeSize + sizeof(VTable*));
-	value.isArray = false;
-
-	return value;
-}*/

@@ -6,9 +6,11 @@ C:\Projects\ThalisV3\Thalis-Interpreter\Src\Thalis\Main.cpp;C:\Projects\ThalisV3
 C:\Projects\ThalisV3\Thalis-Interpreter\Src\Thalis\Memory\BumpAllocator.cpp;C:\Projects\ThalisV3\Bin-Int\Dist-windows-x86_64\Thalis-Interpreter\BumpAllocator.obj
 C:\Projects\ThalisV3\Thalis-Interpreter\Src\Thalis\Memory\HeapAllocator.cpp;C:\Projects\ThalisV3\Bin-Int\Dist-windows-x86_64\Thalis-Interpreter\HeapAllocator.obj
 C:\Projects\ThalisV3\Thalis-Interpreter\Src\Thalis\Memory\Memory.cpp;C:\Projects\ThalisV3\Bin-Int\Dist-windows-x86_64\Thalis-Interpreter\Memory.obj
+C:\Projects\ThalisV3\Thalis-Interpreter\Src\Thalis\Modules\FSModule.cpp;C:\Projects\ThalisV3\Bin-Int\Dist-windows-x86_64\Thalis-Interpreter\FSModule.obj
 C:\Projects\ThalisV3\Thalis-Interpreter\Src\Thalis\Modules\GLModule.cpp;C:\Projects\ThalisV3\Bin-Int\Dist-windows-x86_64\Thalis-Interpreter\GLModule.obj
 C:\Projects\ThalisV3\Thalis-Interpreter\Src\Thalis\Modules\IOModule.cpp;C:\Projects\ThalisV3\Bin-Int\Dist-windows-x86_64\Thalis-Interpreter\IOModule.obj
 C:\Projects\ThalisV3\Thalis-Interpreter\Src\Thalis\Modules\MathModule.cpp;C:\Projects\ThalisV3\Bin-Int\Dist-windows-x86_64\Thalis-Interpreter\MathModule.obj
+C:\Projects\ThalisV3\Thalis-Interpreter\Src\Thalis\Modules\MemModule.cpp;C:\Projects\ThalisV3\Bin-Int\Dist-windows-x86_64\Thalis-Interpreter\MemModule.obj
 C:\Projects\ThalisV3\Thalis-Interpreter\Src\Thalis\Modules\ModuleID.cpp;C:\Projects\ThalisV3\Bin-Int\Dist-windows-x86_64\Thalis-Interpreter\ModuleID.obj
 C:\Projects\ThalisV3\Thalis-Interpreter\Src\Thalis\Modules\WindowModule.cpp;C:\Projects\ThalisV3\Bin-Int\Dist-windows-x86_64\Thalis-Interpreter\WindowModule.obj
 C:\Projects\ThalisV3\Thalis-Interpreter\Src\Thalis\Parser.cpp;C:\Projects\ThalisV3\Bin-Int\Dist-windows-x86_64\Thalis-Interpreter\Parser.obj

@@ -562,3 +562,71 @@ struct ASTExpressionStrlen : public ASTExpression
 	virtual TypeInfo GetTypeInfo(Program* program) override;
 	virtual ASTExpression* InjectTemplateType(Program* program, Class* cls, ID newScope, const TemplateInstantiation& instantiation, Class* templatedClass) override;
 };
+
+struct ASTExpressionNegate : public ASTExpression
+{
+	ASTExpression* expr;
+
+	ASTExpressionNegate(ID scope, ASTExpression* expr) :
+		ASTExpression(scope), expr(expr) { }
+
+	virtual void EmitCode(Program* program) override;
+	virtual TypeInfo GetTypeInfo(Program* program) override;
+	virtual ASTExpression* InjectTemplateType(Program* program, Class* cls, ID newScope, const TemplateInstantiation& instantiation, Class* templatedClass) override;
+};
+
+struct ASTExpressionAccessMemberFromStack : public ASTExpression
+{
+	ASTExpression* expr;
+	TypeInfo memberTypeInfo;
+	uint64 offset;
+	ASTExpression* assignExpr;
+	uint16 assignFunctionID;
+	std::vector<std::string> members;
+
+	ASTExpressionAccessMemberFromStack(ID scope, ASTExpression* expr, const TypeInfo& memberTypeInfo, uint64 offset, ASTExpression* assignExpr = nullptr) :
+		ASTExpression(scope), expr(expr), memberTypeInfo(memberTypeInfo), offset(offset), assignExpr(assignExpr), assignFunctionID(INVALID_ID) { }
+
+	virtual void EmitCode(Program* program) override;
+	virtual TypeInfo GetTypeInfo(Program* program) override;
+	virtual bool Resolve(Program* program) override;
+	virtual ASTExpression* InjectTemplateType(Program* program, Class* cls, ID newScope, const TemplateInstantiation& instantiation, Class* templatedClass) override;
+};
+
+struct ASTExpressionSizeOfStatic : public ASTExpression
+{
+	uint16 type;
+	
+	ASTExpressionSizeOfStatic(ID scope, uint16 type) :
+		ASTExpression(scope), type(type) { }
+
+	virtual void EmitCode(Program* program) override;
+	virtual TypeInfo GetTypeInfo(Program* program) override;
+	virtual ASTExpression* InjectTemplateType(Program* program, Class* cls, ID newScope, const TemplateInstantiation& instantiation, Class* templatedClass) override;
+};
+
+struct ASTExpressionOffsetOf : public ASTExpression
+{
+	uint64 offset;
+
+	ASTExpressionOffsetOf(ID scope, uint64 offset) :
+		ASTExpression(scope), offset(offset) { }
+
+	virtual void EmitCode(Program* program) override;
+	virtual TypeInfo GetTypeInfo(Program* program) override;
+	virtual ASTExpression* InjectTemplateType(Program* program, Class* cls, ID newScope, const TemplateInstantiation& instantiation, Class* templatedClass) override;
+};
+
+struct ASTExpressionArithmaticEquals : public ASTExpression
+{
+	ASTExpression* expr;
+	ASTExpression* incrementExpr;
+	ASTOperator op;
+
+	ASTExpressionArithmaticEquals(ID scope, ASTExpression* expr, ASTExpression* incrementExpr, ASTOperator op) :
+		ASTExpression(scope), expr(expr), incrementExpr(incrementExpr), op(op) { }
+
+	virtual void EmitCode(Program* program) override;
+	virtual TypeInfo GetTypeInfo(Program* program) override;
+	virtual ASTExpression* InjectTemplateType(Program* program, Class* cls, ID newScope, const TemplateInstantiation& instantiation, Class* templatedClass) override;
+};

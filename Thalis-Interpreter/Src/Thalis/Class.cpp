@@ -31,10 +31,16 @@ void Class::AddFunction(Function* function)
 		}
 	}
 
+	if ((function->name == m_Name) && function->parameters.empty())
+	{
+		m_DefaultConstructor = function;
+	}
+
 	if ((function->name == "operator=") && (function->parameters.size() == 1))
 	{
 		if ((function->parameters[0].type.pointerLevel == 0) &&
-			(function->parameters[0].type.type == m_ID))
+			(function->parameters[0].type.type == m_ID) ||
+			(m_GenericClass && function->parameters[0].type.type == m_GenericClass->m_ID))
 		{
 			m_AssignSTFunction = function;
 		}
@@ -205,6 +211,11 @@ Function* Class::FindFunctionBySignature(const std::string& signature)
 
 void Class::EmitCode(Program* program)
 {
+	if (IsTemplateClass())
+	{
+		return;
+	}
+
 	for (uint32 i = 0; i < m_FunctionMap.size(); i++)
 	{
 		Function* function = m_FunctionMap[i];
@@ -264,6 +275,7 @@ uint64 Class::CalculateOffset(const std::vector<std::string>& members, TypeInfo*
 		for (uint32 j = 0; j < m_MemberFields.size(); j++)
 		{
 			const ClassField& member = m_MemberFields[j];
+			
 			if (members[i] == member.name)
 			{
 				uint64 memberOffset = member.offset + currentOffset;
@@ -272,8 +284,12 @@ uint64 Class::CalculateOffset(const std::vector<std::string>& members, TypeInfo*
 				if (Value::IsPrimitiveType(member.type.type) || (i + 1) == members.size())
 				{
 					*memberTypeInfo = member.type;
+					if (member.arrayLength > 0)
+						memberTypeInfo->pointerLevel = 0;
+
 					if (member.type.type == (uint16)ValueType::TEMPLATE_TYPE)
 						*isTemplated = true;
+
 					return memberOffset;
 				}
 

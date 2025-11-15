@@ -152,9 +152,11 @@
     <ClInclude Include="Src\Thalis\Memory\BumpAllocator.h" />
     <ClInclude Include="Src\Thalis\Memory\HeapAllocator.h" />
     <ClInclude Include="Src\Thalis\Memory\Memory.h" />
+    <ClInclude Include="Src\Thalis\Modules\FSModule.h" />
     <ClInclude Include="Src\Thalis\Modules\GLModule.h" />
     <ClInclude Include="Src\Thalis\Modules\IOModule.h" />
     <ClInclude Include="Src\Thalis\Modules\MathModule.h" />
+    <ClInclude Include="Src\Thalis\Modules\MemModule.h" />
     <ClInclude Include="Src\Thalis\Modules\ModuleID.h" />
     <ClInclude Include="Src\Thalis\Modules\WindowModule.h" />
     <ClInclude Include="Src\Thalis\Parser.h" />
@@ -177,9 +179,11 @@
     <ClCompile Include="Src\Thalis\Memory\BumpAllocator.cpp" />
     <ClCompile Include="Src\Thalis\Memory\HeapAllocator.cpp" />
     <ClCompile Include="Src\Thalis\Memory\Memory.cpp" />
+    <ClCompile Include="Src\Thalis\Modules\FSModule.cpp" />
     <ClCompile Include="Src\Thalis\Modules\GLModule.cpp" />
     <ClCompile Include="Src\Thalis\Modules\IOModule.cpp" />
     <ClCompile Include="Src\Thalis\Modules\MathModule.cpp" />
+    <ClCompile Include="Src\Thalis\Modules\MemModule.cpp" />
     <ClCompile Include="Src\Thalis\Modules\ModuleID.cpp" />
     <ClCompile Include="Src\Thalis\Modules\WindowModule.cpp" />
     <ClCompile Include="Src\Thalis\Parser.cpp" />

@@ -21,6 +21,7 @@ enum class OpCode : uint16
 	PUSH_REAL32, PUSH_REAL64,
 	PUSH_CHAR, PUSH_BOOL, PUSH_STRING,
 	PUSH_VARIABLE, PUSH_MEMBER, PUSH_THIS,
+	PUSH_UNTYPED_NULL,
 
 	PUSH_SCOPE, POP_SCOPE, PUSH_LOOP, POP_LOOP,
 	BREAK, CONTINUE,
@@ -34,7 +35,7 @@ enum class OpCode : uint16
 	ADDRESS_OF, DEREFERENCE,
 
 	VARIABLE_SET, MEMBER_SET,
-	INDEX, INDEX_ASSIGN, DIRECT_MEMBER_ACCESS, DIRECT_MEMBER_ASSIGN,
+	INDEX, INDEX_ASSIGN, DIRECT_MEMBER_ACCESS, DIRECT_MEMBER_ASSIGN, ACCESS_MEMBER_FROM_STACK,
 
 	NEW, NEW_ARRAY,
 	DELETE, DELETE_ARRAY,
@@ -44,6 +45,7 @@ enum class OpCode : uint16
 	ADD, SUBTRACT, MULTIPLY, DIVIDE, MOD,
 	LESS, GREATER, LESS_EQUAL, GREATER_EQUAL, EQUALS, NOT_EQUALS,
 	UNARY_UPDATE, NOT, NEGATE, LOGICAL_OR, LOGICAL_AND,
+	PLUS_EQUALS, MINUS_EQUALS, TIMES_EQUALS, DIVIDE_EQUALS,
 
 	POINTER_CAST,
 
@@ -84,6 +86,19 @@ struct PendingCopyConstructor
 
 	Value dst;
 	Value src;
+	Function* function;
+};
+
+struct PendingDefaultConstructor
+{
+	PendingDefaultConstructor(const Value& value, Function* function) :
+		value(value), function(function) { }
+
+	PendingDefaultConstructor() :
+		value(Value::MakeNULL()), function(nullptr) {
+	}
+
+	Value value;
 	Function* function;
 };
 
@@ -146,9 +161,12 @@ public:
 	void AddModCommand(uint16 functionID);
 
 	void AddPointerCastCommand(uint16 castToType);
+	void AddAccessMemberFromStackCommand(uint64 offset, uint16 type, uint8 pointerLevel, bool assign, uint16 assignFunctionID);
 
 	uint32 GetCodeSize() const;
 	uint32 GetStackSize() const;
+	uint32 GetScopeStackSize() const;
+	uint32 GetLoopStackSize() const;
 
 	void AddModule(const std::string& name, ID id);
 	ID GetModuleID(const std::string& name) const;
@@ -210,6 +228,8 @@ private:
 	void ExecutePendingCopyConstructors(uint32 offset = 0);
 	void ExecuteAssignFunction(const Value& thisValue, const Value& assignValue, Function* assignFunction);
 	void ExecuteArithmaticFunction(const Value& lhs, const Value& rhs, Function* function);
+	void AddDefaultConstructorRecursive(const Value& value, uint64 offset = 0);
+	void ExecutePendingDefaultConstructors(uint32 offset);
 
 	uint64 ReadUInt64();
 	uint32 ReadUInt32();
@@ -254,6 +274,8 @@ private:
 
 	std::vector<Value> m_PendingDestructors;
 	std::vector<PendingCopyConstructor> m_PendingCopyConstructors;
+	std::vector<PendingDefaultConstructor> m_PendingDefaultConstructors;
+	std::vector<void*> m_PendingDeletes;
 	void* m_PendingDelete;
 
 	ID m_ClassWithMainFunction;

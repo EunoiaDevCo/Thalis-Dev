@@ -22,15 +22,21 @@ int main()
 
 	uint64 marker = program.GetStackAllocator()->GetMarker();
 	uint64 maxStackUsage = program.GetStackAllocator()->GetMaxUsage();
+	uint64 maxStackUsageAfterInitialization = program.GetStackAllocator()->GetMaxUsageAfterFree();
 	uint64 numHeapAllocs = program.GetHeapAllocator()->GetNumAllocs();
 	uint64 numHeapFrees = program.GetHeapAllocator()->GetNumFrees();
 	uint32 stackSize = program.GetStackSize();
+	uint32 scopeStackSize = program.GetScopeStackSize();
+	uint32 loopStackSize = program.GetLoopStackSize();
 
 	std::cout << "Stack marker: " << Memory::BytesToKB(marker) << "KB" << std::endl;
 	std::cout << "Max stack usage: " << Memory::BytesToKB(maxStackUsage) << "KB" << std::endl;
+	std::cout << "Max stack usage during execution: " << Memory::BytesToKB(maxStackUsageAfterInitialization) << "KB" << std::endl;
 	std::cout << "Num heap allocs: " << numHeapAllocs << std::endl;
 	std::cout << "Num heap frees: " << numHeapFrees << std::endl;
 	std::cout << "Stack size: " << stackSize << std::endl;
+	std::cout << "Scope stack size: " << scopeStackSize << std::endl;
+	std::cout << "Loop stack size: " << loopStackSize << std::endl;
 
 	while (true);
 

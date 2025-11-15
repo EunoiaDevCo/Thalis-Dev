@@ -362,6 +362,8 @@ Token Tokenizer::GetToken()
 				token.type = TokenTypeT::STR_TO_INT;
 			else if (StringEqual(token.text, token.length, "int_to_str", 10))
 				token.type = TokenTypeT::INT_TO_STR;
+			else if (StringEqual(token.text, token.length, "offsetof", 8))
+				token.type = TokenTypeT::OFFSETOF;
 		}
 		else if (IsNumber(at[0]))
 		{

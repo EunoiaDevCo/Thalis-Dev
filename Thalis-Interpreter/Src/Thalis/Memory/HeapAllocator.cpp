@@ -25,6 +25,11 @@ uint64 HeapAllocator::GetMaxUsage() const
 	return 0;
 }
 
+uint64 HeapAllocator::GetMaxUsageAfterFree() const
+{
+	return 0;
+}
+
 void HeapAllocator::Free(void* data)
 {
 	if (!data)

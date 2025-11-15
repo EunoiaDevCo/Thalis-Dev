@@ -720,6 +720,103 @@ struct Value
 		return Value::MakeBool(false, allocator);
 	}
 
+	inline Value Negate(Allocator* allocator)
+	{
+		switch ((ValueType)type)
+		{
+		case ValueType::UINT8:   return Value::MakeUInt8(-(*(uint8*)data), allocator); break;
+		case ValueType::UINT16:  return Value::MakeUInt16(-(*(uint16*)data), allocator); break;
+		case ValueType::UINT32:  return Value::MakeUInt32(-(*(uint32*)data), allocator); break;
+		case ValueType::UINT64:  return Value::MakeUInt64(-(*(uint64*)data), allocator); break;
+		case ValueType::INT8:    return Value::MakeInt8(-(*(int8*)data), allocator); break;
+		case ValueType::INT16:   return Value::MakeInt16(-(*(int16*)data), allocator); break;
+		case ValueType::INT32:   return Value::MakeInt32(-(*(int32*)data), allocator); break;
+		case ValueType::INT64:   return Value::MakeInt64(-(*(int64*)data), allocator); break;
+		case ValueType::REAL32:  return Value::MakeReal32(-(*(real32*)data), allocator); break;
+		case ValueType::REAL64:  return Value::MakeReal64(-(*(real64*)data), allocator); break;
+		case ValueType::CHAR:    return Value::MakeChar(-(*(char*)data), allocator); break;
+		case ValueType::BOOL:	 return Value::MakeBool(-(*(bool*)data), allocator); break;
+		}
+
+		return Value::MakeNULL();
+	}
+
+	inline void PlusEquals(const Value& value)
+	{
+		switch ((ValueType)type)
+		{
+		case ValueType::UINT8:   *(uint8*)data += value.GetUInt8(); break;
+		case ValueType::UINT16:  *(uint16*)data += value.GetUInt16(); break;
+		case ValueType::UINT32:  *(uint32*)data += value.GetUInt32(); break;
+		case ValueType::UINT64:  *(uint64*)data += value.GetUInt64(); break;
+		case ValueType::INT8:    *(int8*)data += value.GetInt8(); break;
+		case ValueType::INT16:   *(int16*)data += value.GetInt16(); break;
+		case ValueType::INT32:   *(int32*)data += value.GetInt32(); break;
+		case ValueType::INT64:   *(int64*)data += value.GetInt64(); break;
+		case ValueType::REAL32:  *(real32*)data += value.GetReal32(); break;
+		case ValueType::REAL64:  *(real64*)data += value.GetReal64(); break;
+		case ValueType::CHAR:    *(char*)data += value.GetChar(); break;
+		case ValueType::BOOL:	 *(bool*)data += value.GetBool(); break;
+		}
+	}
+
+	inline void MinusEquals(const Value& value)
+	{
+		switch ((ValueType)type)
+		{
+		case ValueType::UINT8:   *(uint8*)data -= value.GetUInt8(); break;
+		case ValueType::UINT16:  *(uint16*)data -= value.GetUInt16(); break;
+		case ValueType::UINT32:  *(uint32*)data -= value.GetUInt32(); break;
+		case ValueType::UINT64:  *(uint64*)data -= value.GetUInt64(); break;
+		case ValueType::INT8:    *(int8*)data -= value.GetInt8(); break;
+		case ValueType::INT16:   *(int16*)data -= value.GetInt16(); break;
+		case ValueType::INT32:   *(int32*)data -= value.GetInt32(); break;
+		case ValueType::INT64:   *(int64*)data -= value.GetInt64(); break;
+		case ValueType::REAL32:  *(real32*)data -= value.GetReal32(); break;
+		case ValueType::REAL64:  *(real64*)data -= value.GetReal64(); break;
+		case ValueType::CHAR:    *(char*)data -= value.GetChar(); break;
+		case ValueType::BOOL:	 *(bool*)data -= value.GetBool(); break;
+		}
+	}
+
+	inline void TimesEquals(const Value& value)
+	{
+		switch ((ValueType)type)
+		{
+		case ValueType::UINT8:   *(uint8*)data *= value.GetUInt8(); break;
+		case ValueType::UINT16:  *(uint16*)data *= value.GetUInt16(); break;
+		case ValueType::UINT32:  *(uint32*)data *= value.GetUInt32(); break;
+		case ValueType::UINT64:  *(uint64*)data *= value.GetUInt64(); break;
+		case ValueType::INT8:    *(int8*)data *= value.GetInt8(); break;
+		case ValueType::INT16:   *(int16*)data *= value.GetInt16(); break;
+		case ValueType::INT32:   *(int32*)data *= value.GetInt32(); break;
+		case ValueType::INT64:   *(int64*)data *= value.GetInt64(); break;
+		case ValueType::REAL32:  *(real32*)data *= value.GetReal32(); break;
+		case ValueType::REAL64:  *(real64*)data *= value.GetReal64(); break;
+		case ValueType::CHAR:    *(char*)data *= value.GetChar(); break;
+		case ValueType::BOOL:	 *(bool*)data *= value.GetBool(); break;
+		}
+	}
+
+	inline void DivideEquals(const Value& value)
+	{
+		switch ((ValueType)type)
+		{
+		case ValueType::UINT8:   *(uint8*)data /= value.GetUInt8(); break;
+		case ValueType::UINT16:  *(uint16*)data /= value.GetUInt16(); break;
+		case ValueType::UINT32:  *(uint32*)data /= value.GetUInt32(); break;
+		case ValueType::UINT64:  *(uint64*)data /= value.GetUInt64(); break;
+		case ValueType::INT8:    *(int8*)data /= value.GetInt8(); break;
+		case ValueType::INT16:   *(int16*)data /= value.GetInt16(); break;
+		case ValueType::INT32:   *(int32*)data /= value.GetInt32(); break;
+		case ValueType::INT64:   *(int64*)data /= value.GetInt64(); break;
+		case ValueType::REAL32:  *(real32*)data /= value.GetReal32(); break;
+		case ValueType::REAL64:  *(real64*)data /= value.GetReal64(); break;
+		case ValueType::CHAR:    *(char*)data /= value.GetChar(); break;
+		case ValueType::BOOL:	 *(bool*)data /= value.GetBool(); break;
+		}
+	}
+
 	inline friend std::ostream& operator<<(std::ostream& os, const Value& v)
 	{
 		if (v.pointerLevel == 1 && v.type == (uint16)ValueType::CHAR)

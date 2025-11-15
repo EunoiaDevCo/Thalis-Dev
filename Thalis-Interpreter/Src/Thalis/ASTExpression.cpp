@@ -16,6 +16,12 @@ void ASTExpression::operator delete(void* ptr) noexcept {
 
 void ASTExpressionLiteral::EmitCode(Program* program)
 {
+	if (value.type == INVALID_ID && value.data == nullptr)
+	{
+		program->WriteOPCode(OpCode::PUSH_UNTYPED_NULL);
+		return;
+	}
+
 	switch ((ValueType)value.type)
 	{
 	case ValueType::UINT8: program->AddPushConstantUInt8Command(value.GetUInt8()); break;
@@ -138,8 +144,40 @@ TypeInfo ASTExpressionBinary::GetTypeInfo(Program* program)
 {
 	TypeInfo leftType = lhs->GetTypeInfo(program);
 	TypeInfo rightType = rhs->GetTypeInfo(program);
-	uint16 resultType = Value::PromoteType(leftType.type, rightType.type);
-	return TypeInfo(resultType, 0);
+
+	if (leftType.pointerLevel > 0)
+	{
+		return TypeInfo(leftType.type, leftType.pointerLevel);
+	}
+	if(Value::IsPrimitiveType(leftType.type) && Value::IsPrimitiveType(rightType.type))
+	{
+		uint16 resultType = Value::PromoteType(leftType.type, rightType.type);
+		return TypeInfo(resultType, 0);
+	}
+	else
+	{
+		Class* cls = program->GetClass(leftType.type);
+		std::vector<ASTExpression*> args;
+		args.push_back(rhs);
+		if(aritmaticFunctionID == INVALID_ID)
+		{
+			switch (op)
+			{
+			case ASTOperator::ADD:		aritmaticFunctionID = cls->GetFunctionID("operator+", args); break;
+			case ASTOperator::MINUS:	aritmaticFunctionID = cls->GetFunctionID("operator-", args); break;
+			case ASTOperator::MULTIPLY: aritmaticFunctionID = cls->GetFunctionID("operator*", args); break;
+			case ASTOperator::DIVIDE:	aritmaticFunctionID = cls->GetFunctionID("operator/", args); break;
+			case ASTOperator::MOD:		aritmaticFunctionID = cls->GetFunctionID("operator%", args); break;
+			}
+		}
+
+		if (aritmaticFunctionID != INVALID_ID)
+		{
+			return cls->GetFunction(aritmaticFunctionID)->returnInfo;
+		}
+	}
+
+	return TypeInfo(INVALID_ID, 0);
 }
 
 ASTExpression* ASTExpressionBinary::InjectTemplateType(Program* program, Class* cls, ID newScope, const TemplateInstantiation& instantiation, Class* templatedClass)
@@ -154,6 +192,7 @@ bool ASTExpressionBinary::Resolve(Program* program)
 {
 	TypeInfo lhsType = lhs->GetTypeInfo(program);
 	if (Value::IsPrimitiveType(lhsType.type)) return true;
+	if (lhsType.pointerLevel > 0) return true;
 
 	Class* cls = program->GetClass(lhsType.type);
 	std::vector<ASTExpression*> args;
@@ -378,6 +417,9 @@ bool ASTExpressionStaticFunctionCall::Resolve(Program* program)
 
 ASTExpression* ASTExpressionStaticFunctionCall::InjectTemplateType(Program* program, Class* cls, ID newScope, const TemplateInstantiation& instantiation, Class* templatedClass)
 {
+	if (program->GetClass(classID)->IsTemplateClass())
+		classID = templatedClass->GetID();
+
 	std::vector<ASTExpression*> injectedArgs;
 	for (uint32 i = 0; i < argExprs.size(); i++)
 		injectedArgs.push_back(argExprs[i]->InjectTemplateType(program, cls, newScope, instantiation, templatedClass));
@@ -398,7 +440,7 @@ void ASTExpressionReturn::EmitCode(Program* program)
 			dynamic_cast<ASTExpressionVirtualFunctionCall*>(expr) ||
 			dynamic_cast<ASTExpressionBinary*>(expr))
 		{
-			clone = false;
+			//clone = false;
 		}
 
 		returnsValue = true;
@@ -923,12 +965,11 @@ void ASTExpressionFor::EmitCode(Program* program)
 	for (uint32 i = 0; i < forExprs.size(); i++)
 		forExprs[i]->EmitCode(program);
 
-	program->AddPopScopeCommand();
-
 	uint32 incrPC = program->GetCodeSize();
 	if (incrExpr)
 		incrExpr->EmitCode(program);
 
+	program->AddPopScopeCommand();
 	program->WriteOPCode(OpCode::JUMP);
 	program->WriteUInt32(conditionPos);
 	uint32 loopEndPos = program->GetCodeSize();
@@ -1209,4 +1250,127 @@ ASTExpression* ASTExpressionStrlen::InjectTemplateType(Program* program, Class* 
 {
 	ASTExpression* injectedExpr = expr->InjectTemplateType(program, cls, newScope, instantiation, templatedClass);
 	return new ASTExpressionStrlen(newScope, injectedExpr);
+}
+
+void ASTExpressionNegate::EmitCode(Program* program)
+{
+	if (isStatement) return;
+
+	expr->EmitCode(program);
+	program->WriteOPCode(OpCode::NEGATE);
+}
+
+TypeInfo ASTExpressionNegate::GetTypeInfo(Program* program)
+{
+	return expr->GetTypeInfo(program);
+}
+
+ASTExpression* ASTExpressionNegate::InjectTemplateType(Program* program, Class* cls, ID newScope, const TemplateInstantiation& instantiation, Class* templatedClass)
+{
+	ASTExpression* injectedExpr = expr->InjectTemplateType(program, cls, newScope, instantiation, templatedClass);
+	return new ASTExpressionNegate(newScope, injectedExpr);
+}
+
+void ASTExpressionAccessMemberFromStack::EmitCode(Program* program)
+{
+	if (assignExpr == nullptr && isStatement)
+		return;
+
+	if (assignExpr)
+	{
+		assignExpr->EmitCode(program);
+	}
+
+	expr->EmitCode(program);
+	program->AddAccessMemberFromStackCommand(offset, memberTypeInfo.type, memberTypeInfo.pointerLevel, assignExpr != nullptr, assignFunctionID);
+}
+
+TypeInfo ASTExpressionAccessMemberFromStack::GetTypeInfo(Program* program)
+{
+	return memberTypeInfo;
+}
+
+bool ASTExpressionAccessMemberFromStack::Resolve(Program* program)
+{
+	if (assignExpr == nullptr) return true;
+	if (memberTypeInfo.pointerLevel > 0) return true;
+	if (Value::IsPrimitiveType(memberTypeInfo.type)) return true;
+
+	Class* cls = program->GetClass(memberTypeInfo.type);
+	std::vector<ASTExpression*> args;
+	args.push_back(assignExpr);
+	assignFunctionID = cls->GetFunctionID("operator=", args);
+	return true;
+}
+
+ASTExpression* ASTExpressionAccessMemberFromStack::InjectTemplateType(Program* program, Class* cls, ID newScope, const TemplateInstantiation& instantiation, Class* templatedClass)
+{
+	uint64 injectedOffset = offset;
+	TypeInfo injectedMemberTypeInfo = memberTypeInfo;
+	if (!members.empty())
+	{
+		bool templated = false;
+		injectedOffset = templatedClass->CalculateOffset(members, &injectedMemberTypeInfo, &templated);
+	}
+
+	ASTExpression* injectedExpr = expr->InjectTemplateType(program, cls, newScope, instantiation, templatedClass);
+	ASTExpression* injectedAssignExpr = assignExpr ? assignExpr->InjectTemplateType(program, cls, newScope, instantiation, templatedClass) : nullptr;
+	return new ASTExpressionAccessMemberFromStack(newScope, injectedExpr, injectedMemberTypeInfo, injectedOffset, injectedAssignExpr);
+}
+
+void ASTExpressionSizeOfStatic::EmitCode(Program* program)
+{
+	if (isStatement) return;
+	program->AddPushConstantUInt64Command(program->GetTypeSize(type));
+}
+
+TypeInfo ASTExpressionSizeOfStatic::GetTypeInfo(Program* program)
+{
+	return TypeInfo((uint16)ValueType::UINT64, 0);
+}
+
+ASTExpression* ASTExpressionSizeOfStatic::InjectTemplateType(Program* program, Class* cls, ID newScope, const TemplateInstantiation& instantiation, Class* templatedClass)
+{
+	return new ASTExpressionSizeOfStatic(newScope, type);
+}
+
+void ASTExpressionOffsetOf::EmitCode(Program* program)
+{
+	if (isStatement) return;
+	program->AddPushConstantUInt64Command(offset);
+}
+
+TypeInfo ASTExpressionOffsetOf::GetTypeInfo(Program* program)
+{
+	return TypeInfo((uint16)ValueType::UINT64, 0);
+}
+
+ASTExpression* ASTExpressionOffsetOf::InjectTemplateType(Program* program, Class* cls, ID newScope, const TemplateInstantiation& instantiation, Class* templatedClass)
+{
+	return new ASTExpressionOffsetOf(newScope, offset);
+}
+
+void ASTExpressionArithmaticEquals::EmitCode(Program* program)
+{
+	expr->EmitCode(program);
+	incrementExpr->EmitCode(program);
+	switch (op)
+	{
+	case ASTOperator::ADD: program->WriteOPCode(OpCode::PLUS_EQUALS); break;
+	case ASTOperator::MINUS: program->WriteOPCode(OpCode::MINUS_EQUALS); break;
+	case ASTOperator::MULTIPLY: program->WriteOPCode(OpCode::TIMES_EQUALS); break;
+	case ASTOperator::DIVIDE: program->WriteOPCode(OpCode::DIVIDE_EQUALS); break;
+	}
+}
+
+TypeInfo ASTExpressionArithmaticEquals::GetTypeInfo(Program* program)
+{
+	return expr->GetTypeInfo(program);
+}
+
+ASTExpression* ASTExpressionArithmaticEquals::InjectTemplateType(Program* program, Class* cls, ID newScope, const TemplateInstantiation& instantiation, Class* templatedClass)
+{
+	ASTExpression* injectedExpr = expr->InjectTemplateType(program, cls, newScope, instantiation, templatedClass);
+	ASTExpression* injectedIncrementExpr = incrementExpr->InjectTemplateType(program, cls, newScope, instantiation, templatedClass);
+	return new ASTExpressionArithmaticEquals(newScope, injectedExpr, injectedIncrementExpr, op);
 }

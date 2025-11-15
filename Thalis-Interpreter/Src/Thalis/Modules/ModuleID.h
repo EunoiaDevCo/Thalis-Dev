@@ -6,6 +6,8 @@
 #define MATH_MODULE_ID		2
 #define WINDOW_MODULE_ID	3
 #define OPENGL_MODULE_ID	4
+#define MEM_MODULE_ID		5
+#define FS_MODULE_ID		6
 
 class Module
 {

@@ -37,6 +37,7 @@ void* BumpAllocator::AllocAligned(uint64 size, uint64 alignment)
     m_Offset += totalSize;
 
     m_MaxUsage = std::max(m_Offset, m_MaxUsage);
+    m_MaxUsageAfterFree = std::max(m_Offset, m_MaxUsageAfterFree);
 
     // Return aligned pointer
     return reinterpret_cast<void*>(alignedAddress);
@@ -47,17 +48,24 @@ void* BumpAllocator::Alloc(uint64 size)
     uint8* data = m_Data + m_Offset;
     m_Offset += size;
     m_MaxUsage = std::max(m_Offset, m_MaxUsage);
+    m_MaxUsageAfterFree = std::max(m_Offset, m_MaxUsageAfterFree);
     return data;
 }
 
 void BumpAllocator::Free()
 {
     m_Offset = 0;
+    m_MaxUsageAfterFree = 0;
 }
 
 uint64 BumpAllocator::GetMaxUsage() const
 {
     return m_MaxUsage;
+}
+
+uint64 BumpAllocator::GetMaxUsageAfterFree() const
+{
+    return m_MaxUsageAfterFree;
 }
 
 uint64 BumpAllocator::GetMarker() const

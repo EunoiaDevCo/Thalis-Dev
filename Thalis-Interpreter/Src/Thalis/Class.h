@@ -35,6 +35,7 @@ public:
 		m_Destructor(nullptr),
 		m_CopyConstructor(nullptr),
 		m_AssignSTFunction(nullptr),
+		m_DefaultConstructor(nullptr),
 		m_BaseClass(baseClass),
 		m_GenericClass(nullptr),
 		m_IsTemplateInstance(false)
@@ -54,6 +55,7 @@ public:
 	inline std::vector<FunctionParameter>& GetFunctionParameters(ID functionID) { return m_FunctionMap[functionID]->parameters; }
 	inline Function* GetDestructor() const { return m_Destructor; }
 	inline Function* GetCopyConstructor() const { return m_CopyConstructor; }
+	inline Function* GetDefaultConstructor() const { return m_DefaultConstructor; }
 	inline const std::vector<ClassField>& GetMemberFields() const { return m_MemberFields; }
 
 	uint32 GetFunctionID(const std::string& name, const std::vector<ASTExpression*>& args);
@@ -81,6 +83,7 @@ public:
 	inline bool HasAssignSTFunction() const { return m_AssignSTFunction != nullptr; }
 	inline bool HasBaseClass() const { return m_BaseClass != nullptr; }
 	inline bool HasGenericClass() const { return m_GenericClass != nullptr; }
+	inline bool HasDefaultConstructor() const { return m_DefaultConstructor != nullptr; }
 
 	inline VTable* GetVTable() const { return m_VTable; }
 	inline Class* GetGenericClass() const { return m_GenericClass; }
@@ -110,6 +113,7 @@ private:
 	Function* m_Destructor;
 	Function* m_CopyConstructor;
 	Function* m_AssignSTFunction;
+	Function* m_DefaultConstructor;
 
 	std::vector<ClassField> m_StaticFields;
 	std::vector<ClassField> m_MemberFields;

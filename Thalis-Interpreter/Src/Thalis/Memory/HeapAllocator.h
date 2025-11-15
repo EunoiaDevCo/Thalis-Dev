@@ -10,6 +10,7 @@ public:
 	virtual void Free() override;
 
 	virtual uint64 GetMaxUsage() const override;
+	virtual uint64 GetMaxUsageAfterFree() const override;
 
 	virtual void Free(void* data) override;
 

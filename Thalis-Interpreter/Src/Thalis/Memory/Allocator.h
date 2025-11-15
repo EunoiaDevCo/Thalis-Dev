@@ -14,7 +14,8 @@ public:
 	virtual void Free() = 0;
 	virtual void Free(void* data) = 0;
 
-	virtual uint64 GetMaxUsage() const= 0;
+	virtual uint64 GetMaxUsage() const = 0;
+	virtual uint64 GetMaxUsageAfterFree() const = 0;
 
 	virtual uint64 GetMarker() const = 0;
 	virtual void FreeToMarker(uint64 marker) = 0;

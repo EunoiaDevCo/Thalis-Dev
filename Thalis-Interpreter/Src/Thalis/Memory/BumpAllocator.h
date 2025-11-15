@@ -12,6 +12,7 @@ public:
 	virtual void Free(void* data) override {}
 
 	virtual uint64 GetMaxUsage() const override;
+	virtual uint64 GetMaxUsageAfterFree() const override;
 
 	virtual uint64 GetMarker() const override;
 	virtual void FreeToMarker(uint64 marker) override;
@@ -20,4 +21,5 @@ private:
 	uint64 m_Size;
 	uint64 m_Offset;
 	uint64 m_MaxUsage;
+	uint64 m_MaxUsageAfterFree;
 };

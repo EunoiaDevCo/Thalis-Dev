@@ -60,6 +60,8 @@
     <ClInclude Include="Src\Thalis\VTable.h" />
     <ClInclude Include="Src\Thalis\Value.h" />
     <ClInclude Include="Src\Thalis\Window.h" />
+    <ClInclude Include="Src\Thalis\Modules\MemModule.h" />
+    <ClInclude Include="Src\Thalis\Modules\FSModule.h" />
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="Src\Thalis\ASTExpression.cpp" />
@@ -101,5 +103,7 @@
     <ClCompile Include="Src\Thalis\VTable.cpp" />
     <ClCompile Include="Src\Thalis\Value.cpp" />
     <ClCompile Include="Src\Thalis\Window.cpp" />
+    <ClCompile Include="Src\Thalis\Modules\MemModule.cpp" />
+    <ClCompile Include="Src\Thalis\Modules\FSModule.cpp" />
   </ItemGroup>
 </Project>

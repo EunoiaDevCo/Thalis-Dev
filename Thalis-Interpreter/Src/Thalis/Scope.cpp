@@ -114,9 +114,9 @@ static void AddDestructorRecursive(Program* program, const Value& value, uint32 
 		Value member;
 		member.type = field.type.type;
 		member.pointerLevel = 0;
-		member.data = (uint8*)value.data + field.offset + offset;
+		member.data = (uint8*)value.data + field.offset;
 
-		AddDestructorRecursive(program, member, offset + field.offset);
+		AddDestructorRecursive(program, member);
 	}
 
 	program->AddPendingDestructor(value);
